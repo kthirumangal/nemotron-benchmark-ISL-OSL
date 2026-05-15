@@ -1,6 +1,6 @@
 # Nemotron Benchmark ISL/OSL
 
-This benchmark runs the `of1-testprompts` JSON chat prompts against NVIDIA's OpenAI-compatible NIM API for `Nemotron-3-Nano-30B-A3B`.
+This benchmark runs the `of1-testprompts` JSON chat prompts against OpenAI-compatible chat endpoints. The default model is NVIDIA `Nemotron-3-Nano-30B-A3B`, and the matrix runner also includes `openai/gpt-oss-120b`.
 
 It measures:
 
@@ -11,7 +11,9 @@ It measures:
 - Output tokens: provider usage when returned, otherwise a character-based estimate
 - Target pass/fail: defaults to TTFT <= 2s, total latency <= 5s, and decode throughput >= 200 tok/s
 
-By default the script sends `chat_template_kwargs: {"enable_thinking": false}` so the benchmark measures structured website output rather than additional reasoning traces. Use `--enable-thinking` if you explicitly want to benchmark reasoning mode.
+By default the script sends `chat_template_kwargs: {"enable_thinking": false}` for Nemotron deployments so the benchmark measures structured website output rather than additional reasoning traces. Use `--enable-thinking` if you explicitly want to benchmark Nemotron reasoning mode.
+
+For GPT-OSS deployments, use `--omit-chat-template-kwargs` because many OpenAI-compatible runtimes/providers will reject Nemotron/vLLM-specific extra fields. The matrix also includes a `system_reasoning_effort=low` GPT-OSS row, which prepends `Reasoning: low` to the system prompt to test the lower-latency reasoning setting.
 
 ## Setup
 
@@ -105,6 +107,8 @@ python3 benchmark_nano.py \
 
 The hosted NVIDIA API model alias does not expose precision selection directly. To compare BF16, FP8, and NVFP4, run separate self-hosted NIM/vLLM endpoints for each precision profile, then point the matrix runner at those endpoints.
 
+For GPT-OSS 120B, run an OpenAI-compatible runtime such as vLLM/SGLang and add the endpoint to the same matrix. GPT-OSS 120B is natively MXFP4-quantized and designed to fit on a single 80GB GPU such as an NVIDIA H100. It is not served through the OpenAI API.
+
 Edit:
 
 ```text
@@ -137,6 +141,14 @@ Summary pass/fail columns:
 
 For local endpoints without API keys, set `allow_missing_api_key=true` in the matrix CSV.
 
+Example GPT-OSS 120B vLLM server:
+
+```bash
+vllm serve openai/gpt-oss-120b --host 0.0.0.0 --port 8004
+```
+
+Then run just that row by copying or trimming `precision_matrix.example.csv`, or run the full matrix if all endpoints are available.
+
 ## Suggested Benchmark Matrix
 
 | Scenario | ISL | OSL cap | Concurrency |
@@ -146,9 +158,9 @@ For local endpoints without API keys, set `allow_missing_api_key=true` in the ma
 | Multi-user target | ~16K | 1024 | 5 |
 | Stress | ~16K | 2000 | 5 |
 
-The five prompts are approximately `13.1K-15.4K` input tokens with the Nemotron 3 Nano tokenizer, so `15K ISL` is the practical benchmark shape and `16K ISL` is the safer rounded test bucket.
+The five prompts are approximately `13.1K-15.4K` input tokens with the Nemotron 3 Nano tokenizer and `12.3K-14.4K` input tokens with the GPT-OSS harmony tokenizer, so `16K ISL` is the safer rounded test bucket.
 
-Exact ISL counts calculated with the `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` tokenizer are in:
+Exact ISL counts calculated with the `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` tokenizer and the GPT-OSS harmony renderer are in:
 
 ```text
 prompt_inventory.csv
@@ -171,3 +183,16 @@ Key columns:
 - `e2e_tokens_per_s`
 - `status`
 - `error`
+
+## Model Notes
+
+- `Nemotron-3-Nano-30B-A3B`: matrix rows include BF16, FP8, and NVFP4 self-hosted profiles.
+- `openai/gpt-oss-120b`: matrix rows include MXFP4 default and MXFP4 with `Reasoning: low`.
+- GPT-OSS requires the harmony response format. OpenAI-compatible runtimes such as vLLM should apply the chat format for `/v1/chat/completions`.
+
+References:
+
+- NVIDIA NIM supported models: https://docs.nvidia.com/nim/large-language-models/1.15.0/supported-models.html
+- OpenAI GPT-OSS announcement: https://openai.com/index/introducing-gpt-oss
+- GPT-OSS 120B Hugging Face model card: https://huggingface.co/openai/gpt-oss-120b
+- OpenAI harmony response format: https://cookbook.openai.com/article/harmony

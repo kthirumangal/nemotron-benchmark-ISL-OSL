@@ -185,8 +185,13 @@ def main() -> int:
 
         if truthy(row.get("enable_thinking", "")):
             command.append("--enable-thinking")
+        if truthy(row.get("omit_chat_template_kwargs", "")):
+            command.append("--omit-chat-template-kwargs")
         if truthy(row.get("allow_missing_api_key", "")):
             command.append("--allow-missing-api-key")
+        reasoning_effort = value(row, "system_reasoning_effort", "")
+        if reasoning_effort:
+            command.extend(["--system-reasoning-effort", reasoning_effort])
 
         print(f"\n=== Running {label} ({precision}) ===", flush=True)
         completed = subprocess.run(command, text=True)

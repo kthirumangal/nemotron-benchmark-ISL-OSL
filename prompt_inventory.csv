@@ -1,6 +1,6 @@
-prompt_file,query,input_tokens_nemotron_3_nano_30b_a3b,input_chars,system_chars,user_chars
-01-best-features.json,best features,15000,57118,55360,1758
-02-milk-steaming-follow-up.json,which Arco machines have the best milk steaming and frothing,15385,58957,56070,2887
-03-marzocco.json,marzocco,14877,56651,54898,1753
-04-i-am-a-cyclist.json,i am a cyclist,13085,51313,49510,1803
-05-coffee-before-swimming.json,Should I drink coffee before swimming?,14967,57003,55220,1783
+prompt_file,query,input_tokens_nemotron_3_nano_30b_a3b,input_tokens_gpt_oss_120b_harmony,input_chars,system_chars,user_chars
+01-best-features.json,best features,15000,14059,57118,55360,1758
+02-milk-steaming-follow-up.json,which Arco machines have the best milk steaming and frothing,15385,14431,58957,56070,2887
+03-marzocco.json,marzocco,14877,13948,56651,54898,1753
+04-i-am-a-cyclist.json,i am a cyclist,13085,12337,51313,49510,1803
+05-coffee-before-swimming.json,Should I drink coffee before swimming?,14967,14040,57003,55220,1783

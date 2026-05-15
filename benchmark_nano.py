@@ -42,6 +42,8 @@ class RunResult:
     precision_label: str
     max_tokens: int
     enable_thinking: bool
+    chat_template_kwargs_enabled: bool
+    system_reasoning_effort: str
     input_chars: int
     estimated_input_tokens: int
     ttft_s: Optional[float]
@@ -81,6 +83,23 @@ def load_prompt(path: pathlib.Path) -> list[dict[str, str]]:
         clean_messages.pop()
 
     return clean_messages
+
+
+def apply_system_reasoning_effort(
+    messages: list[dict[str, str]], effort: str
+) -> list[dict[str, str]]:
+    effort = effort.strip().lower()
+    if not effort:
+        return messages
+
+    prefix = f"Reasoning: {effort}\n\n"
+    updated = [dict(message) for message in messages]
+    for message in updated:
+        if message["role"] == "system":
+            message["content"] = prefix + message["content"]
+            return updated
+
+    return [{"role": "system", "content": prefix.strip()}, *updated]
 
 
 def estimate_tokens(text: str) -> int:
@@ -143,6 +162,8 @@ def call_streaming_chat(
     max_tokens: int,
     temperature: float,
     enable_thinking: bool,
+    omit_chat_template_kwargs: bool,
+    system_reasoning_effort: str,
     ttft_target_s: float,
     total_latency_target_s: float,
     throughput_target_tok_s: float,
@@ -159,8 +180,9 @@ def call_streaming_chat(
         "max_tokens": max_tokens,
         "stream": True,
         "stream_options": {"include_usage": True},
-        "chat_template_kwargs": {"enable_thinking": enable_thinking},
     }
+    if not omit_chat_template_kwargs:
+        payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
 
     url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {
@@ -230,6 +252,8 @@ def call_streaming_chat(
             precision_label=precision_label,
             max_tokens=max_tokens,
             enable_thinking=enable_thinking,
+            chat_template_kwargs_enabled=not omit_chat_template_kwargs,
+            system_reasoning_effort=system_reasoning_effort,
             input_chars=input_chars,
             estimated_input_tokens=estimated_input_tokens,
             ttft_s=ttft_s,
@@ -263,6 +287,8 @@ def call_streaming_chat(
             precision_label,
             max_tokens,
             enable_thinking,
+            not omit_chat_template_kwargs,
+            system_reasoning_effort,
             input_chars,
             estimated_input_tokens,
             ttft_target_s,
@@ -279,6 +305,8 @@ def call_streaming_chat(
             precision_label,
             max_tokens,
             enable_thinking,
+            not omit_chat_template_kwargs,
+            system_reasoning_effort,
             input_chars,
             estimated_input_tokens,
             ttft_target_s,
@@ -296,6 +324,8 @@ def error_result(
     precision_label: str,
     max_tokens: int,
     enable_thinking: bool,
+    chat_template_kwargs_enabled: bool,
+    system_reasoning_effort: str,
     input_chars: int,
     estimated_input_tokens: int,
     ttft_target_s: float,
@@ -311,6 +341,8 @@ def error_result(
         precision_label=precision_label,
         max_tokens=max_tokens,
         enable_thinking=enable_thinking,
+        chat_template_kwargs_enabled=chat_template_kwargs_enabled,
+        system_reasoning_effort=system_reasoning_effort,
         input_chars=input_chars,
         estimated_input_tokens=estimated_input_tokens,
         ttft_s=None,
@@ -404,7 +436,7 @@ def print_summary(results: list[RunResult]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Benchmark Nemotron 3 Nano 30B-A3B with Ao1 prompts.")
+    parser = argparse.ArgumentParser(description="Benchmark an OpenAI-compatible chat model with Ao1 prompts.")
     parser.add_argument("--prompt-dir", default="of1-testprompts")
     parser.add_argument("--base-url", default=os.getenv("NVIDIA_BASE_URL", DEFAULT_BASE_URL))
     parser.add_argument("--model", default=os.getenv("NVIDIA_MODEL", DEFAULT_MODEL))
@@ -421,6 +453,17 @@ def parse_args() -> argparse.Namespace:
         "--enable-thinking",
         action="store_true",
         help="Allow Nemotron 3 Nano to emit reasoning traces. Defaults off for structured website output benchmarks.",
+    )
+    parser.add_argument(
+        "--omit-chat-template-kwargs",
+        action="store_true",
+        help="Do not send chat_template_kwargs. Use this for runtimes/providers that reject vLLM/Nemotron-specific extra fields.",
+    )
+    parser.add_argument(
+        "--system-reasoning-effort",
+        choices=["", "low", "medium", "high"],
+        default="",
+        help="Optionally prepend 'Reasoning: <effort>' to the system prompt, useful for GPT-OSS comparisons.",
     )
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=1)
@@ -445,7 +488,10 @@ def main() -> int:
         print(f"No JSON prompts found in {prompt_dir}", file=sys.stderr)
         return 2
 
-    prompts = [(path, load_prompt(path)) for path in prompt_paths]
+    prompts = [
+        (path, apply_system_reasoning_effort(load_prompt(path), args.system_reasoning_effort))
+        for path in prompt_paths
+    ]
     tasks = []
     for run_index in range(args.runs):
         for path, messages in prompts:
@@ -467,6 +513,8 @@ def main() -> int:
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
                 enable_thinking=args.enable_thinking,
+                omit_chat_template_kwargs=args.omit_chat_template_kwargs,
+                system_reasoning_effort=args.system_reasoning_effort,
                 ttft_target_s=args.ttft_target_s,
                 total_latency_target_s=args.total_latency_target_s,
                 throughput_target_tok_s=args.throughput_target_tok_s,
