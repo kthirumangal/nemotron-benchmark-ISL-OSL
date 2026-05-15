@@ -1,6 +1,6 @@
 # Nemotron Benchmark ISL/OSL
 
-This benchmark runs the `of1-testprompts` JSON chat prompts against NVIDIA's OpenAI-compatible NIM API for Nemotron Nano.
+This benchmark runs the `of1-testprompts` JSON chat prompts against NVIDIA's OpenAI-compatible NIM API for `Nemotron-3-Nano-30B-A3B`.
 
 It measures:
 
@@ -9,6 +9,8 @@ It measures:
 - Decode throughput: output tokens per second after TTFT
 - E2E throughput: output tokens per second over the full request
 - Output tokens: provider usage when returned, otherwise a character-based estimate
+
+By default the script sends `chat_template_kwargs: {"enable_thinking": false}` so the benchmark measures structured website output rather than additional reasoning traces. Use `--enable-thinking` if you explicitly want to benchmark reasoning mode.
 
 ## Setup
 
@@ -22,14 +24,14 @@ Default endpoint and model:
 
 ```text
 https://integrate.api.nvidia.com/v1
-nvidia/llama-3.1-nemotron-nano-8b-v1
+nvidia/nemotron-3-nano-30b-a3b
 ```
 
 Override them if needed:
 
 ```bash
 export NVIDIA_BASE_URL="https://integrate.api.nvidia.com/v1"
-export NVIDIA_MODEL="nvidia/llama-3.1-nemotron-nano-8b-v1"
+export NVIDIA_MODEL="nvidia/nemotron-3-nano-30b-a3b"
 ```
 
 ## Run
@@ -74,18 +76,29 @@ python3 benchmark_nano.py \
   --concurrency 5
 ```
 
+Reasoning-mode comparison:
+
+```bash
+python3 benchmark_nano.py \
+  --prompt-dir of1-testprompts \
+  --max-tokens 2000 \
+  --runs 3 \
+  --concurrency 1 \
+  --enable-thinking
+```
+
 ## Suggested Benchmark Matrix
 
 | Scenario | ISL | OSL cap | Concurrency |
 |---|---:|---:|---:|
-| First-pass latency | ~15K | 512 | 1 |
-| Main target | ~15K | 1024 | 1 |
-| Multi-user target | ~15K | 1024 | 5 |
-| Stress | ~15K | 2000 | 5 |
+| First-pass latency | ~16K | 512 | 1 |
+| Main target | ~16K | 1024 | 1 |
+| Multi-user target | ~16K | 1024 | 5 |
+| Stress | ~16K | 2000 | 5 |
 
-The five prompts are approximately `12.4K-14.5K` input tokens with a Nemotron/Llama tokenizer, so `15K ISL` is the practical benchmark shape.
+The five prompts are approximately `13.1K-15.4K` input tokens with the Nemotron 3 Nano tokenizer, so `15K ISL` is the practical benchmark shape and `16K ISL` is the safer rounded test bucket.
 
-Exact ISL counts calculated with the `nvidia/Llama-3.1-Nemotron-Nano-8B-v1` tokenizer are in:
+Exact ISL counts calculated with the `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` tokenizer are in:
 
 ```text
 prompt_inventory.csv

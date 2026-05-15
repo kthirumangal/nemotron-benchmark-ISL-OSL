@@ -30,7 +30,7 @@ from typing import Any, Optional
 
 
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_MODEL = "nvidia/llama-3.1-nemotron-nano-8b-v1"
+DEFAULT_MODEL = "nvidia/nemotron-3-nano-30b-a3b"
 
 
 @dataclass
@@ -40,6 +40,7 @@ class RunResult:
     concurrency: int
     model: str
     max_tokens: int
+    enable_thinking: bool
     input_chars: int
     estimated_input_tokens: int
     ttft_s: Optional[float]
@@ -75,7 +76,7 @@ def load_prompt(path: pathlib.Path) -> list[dict[str, str]]:
 
 
 def estimate_tokens(text: str) -> int:
-    # Conservative-enough planning estimate for Llama/Nemotron-style tokenizers.
+    # Conservative-enough planning estimate for Nemotron-style tokenizers.
     # Exact counts require the model tokenizer; this avoids adding dependencies.
     return max(1, round(len(text) / 4.1))
 
@@ -132,6 +133,7 @@ def call_streaming_chat(
     concurrency: int,
     max_tokens: int,
     temperature: float,
+    enable_thinking: bool,
     timeout_s: int,
 ) -> RunResult:
     input_text = "\n".join(message["content"] for message in messages)
@@ -145,6 +147,7 @@ def call_streaming_chat(
         "max_tokens": max_tokens,
         "stream": True,
         "stream_options": {"include_usage": True},
+        "chat_template_kwargs": {"enable_thinking": enable_thinking},
     }
 
     url = f"{base_url.rstrip('/')}/chat/completions"
@@ -204,6 +207,7 @@ def call_streaming_chat(
             concurrency=concurrency,
             model=model,
             max_tokens=max_tokens,
+            enable_thinking=enable_thinking,
             input_chars=input_chars,
             estimated_input_tokens=estimated_input_tokens,
             ttft_s=ttft_s,
@@ -228,6 +232,7 @@ def call_streaming_chat(
             concurrency,
             model,
             max_tokens,
+            enable_thinking,
             input_chars,
             estimated_input_tokens,
             f"HTTP {exc.code}: {body[:500]}",
@@ -239,6 +244,7 @@ def call_streaming_chat(
             concurrency,
             model,
             max_tokens,
+            enable_thinking,
             input_chars,
             estimated_input_tokens,
             repr(exc),
@@ -251,6 +257,7 @@ def error_result(
     concurrency: int,
     model: str,
     max_tokens: int,
+    enable_thinking: bool,
     input_chars: int,
     estimated_input_tokens: int,
     error: str,
@@ -261,6 +268,7 @@ def error_result(
         concurrency=concurrency,
         model=model,
         max_tokens=max_tokens,
+        enable_thinking=enable_thinking,
         input_chars=input_chars,
         estimated_input_tokens=estimated_input_tokens,
         ttft_s=None,
@@ -338,13 +346,18 @@ def print_summary(results: list[RunResult]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Benchmark Nemotron Nano with Ao1 prompts.")
+    parser = argparse.ArgumentParser(description="Benchmark Nemotron 3 Nano 30B-A3B with Ao1 prompts.")
     parser.add_argument("--prompt-dir", default="of1-testprompts")
     parser.add_argument("--base-url", default=os.getenv("NVIDIA_BASE_URL", DEFAULT_BASE_URL))
     parser.add_argument("--model", default=os.getenv("NVIDIA_MODEL", DEFAULT_MODEL))
     parser.add_argument("--api-key-env", default="NVIDIA_API_KEY")
     parser.add_argument("--max-tokens", type=int, default=1024)
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument(
+        "--enable-thinking",
+        action="store_true",
+        help="Allow Nemotron 3 Nano to emit reasoning traces. Defaults off for structured website output benchmarks.",
+    )
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--timeout-s", type=int, default=180)
@@ -385,6 +398,7 @@ def main() -> int:
                 concurrency=args.concurrency,
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
+                enable_thinking=args.enable_thinking,
                 timeout_s=args.timeout_s,
             )
             for path, messages, run_index in tasks
