@@ -9,6 +9,7 @@ It measures:
 - Decode throughput: output tokens per second after TTFT
 - E2E throughput: output tokens per second over the full request
 - Output tokens: provider usage when returned, otherwise a character-based estimate
+- Target pass/fail: defaults to TTFT <= 2s, total latency <= 5s, and decode throughput >= 200 tok/s
 
 By default the script sends `chat_template_kwargs: {"enable_thinking": false}` so the benchmark measures structured website output rather than additional reasoning traces. Use `--enable-thinking` if you explicitly want to benchmark reasoning mode.
 
@@ -44,6 +45,19 @@ python3 benchmark_nano.py \
   --max-tokens 1024 \
   --runs 1 \
   --concurrency 1
+```
+
+Use custom targets:
+
+```bash
+python3 benchmark_nano.py \
+  --prompt-dir of1-testprompts \
+  --max-tokens 1024 \
+  --runs 5 \
+  --concurrency 1 \
+  --ttft-target-s 2.0 \
+  --total-latency-target-s 5.0 \
+  --throughput-target-tok-s 200
 ```
 
 Repeat runs for p50/p90:
@@ -86,6 +100,42 @@ python3 benchmark_nano.py \
   --concurrency 1 \
   --enable-thinking
 ```
+
+## Precision Matrix
+
+The hosted NVIDIA API model alias does not expose precision selection directly. To compare BF16, FP8, and NVFP4, run separate self-hosted NIM/vLLM endpoints for each precision profile, then point the matrix runner at those endpoints.
+
+Edit:
+
+```text
+precision_matrix.example.csv
+```
+
+Then run:
+
+```bash
+python3 benchmark_precision_matrix.py \
+  --matrix precision_matrix.example.csv \
+  --prompt-dir of1-testprompts \
+  --ttft-target-s 2.0 \
+  --total-latency-target-s 5.0 \
+  --throughput-target-tok-s 200
+```
+
+The matrix runner writes one CSV per profile plus a summary:
+
+```text
+results/precision-matrix-<timestamp>/summary.csv
+```
+
+Summary pass/fail columns:
+
+- `p90_ttft_pass`
+- `p90_total_latency_pass`
+- `p50_decode_throughput_pass`
+- `meets_p90_targets`
+
+For local endpoints without API keys, set `allow_missing_api_key=true` in the matrix CSV.
 
 ## Suggested Benchmark Matrix
 

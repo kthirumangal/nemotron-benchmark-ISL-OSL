@@ -39,6 +39,7 @@ class RunResult:
     run_index: int
     concurrency: int
     model: str
+    precision_label: str
     max_tokens: int
     enable_thinking: bool
     input_chars: int
@@ -49,6 +50,13 @@ class RunResult:
     output_tokens_source: str
     decode_tokens_per_s: Optional[float]
     e2e_tokens_per_s: Optional[float]
+    ttft_target_s: float
+    total_latency_target_s: float
+    throughput_target_tok_s: float
+    ttft_pass: bool
+    total_latency_pass: bool
+    throughput_pass: bool
+    meets_targets: bool
     output_chars: int
     status: str
     error: str
@@ -127,6 +135,7 @@ def call_streaming_chat(
     base_url: str,
     api_key: str,
     model: str,
+    precision_label: str,
     messages: list[dict[str, str]],
     prompt_file: str,
     run_index: int,
@@ -134,6 +143,9 @@ def call_streaming_chat(
     max_tokens: int,
     temperature: float,
     enable_thinking: bool,
+    ttft_target_s: float,
+    total_latency_target_s: float,
+    throughput_target_tok_s: float,
     timeout_s: int,
 ) -> RunResult:
     input_text = "\n".join(message["content"] for message in messages)
@@ -151,14 +163,17 @@ def call_streaming_chat(
     }
 
     url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-        },
+        headers=headers,
         method="POST",
     )
 
@@ -200,12 +215,19 @@ def call_streaming_chat(
             decode_tokens_per_s = None
 
         e2e_tokens_per_s = output_tokens / total_latency_s if total_latency_s > 0 else None
+        ttft_pass = ttft_s is not None and ttft_s <= ttft_target_s
+        total_latency_pass = total_latency_s <= total_latency_target_s
+        throughput_pass = (
+            decode_tokens_per_s is not None
+            and decode_tokens_per_s >= throughput_target_tok_s
+        )
 
         return RunResult(
             prompt_file=prompt_file,
             run_index=run_index,
             concurrency=concurrency,
             model=model,
+            precision_label=precision_label,
             max_tokens=max_tokens,
             enable_thinking=enable_thinking,
             input_chars=input_chars,
@@ -216,6 +238,13 @@ def call_streaming_chat(
             output_tokens_source=output_tokens_source,
             decode_tokens_per_s=decode_tokens_per_s,
             e2e_tokens_per_s=e2e_tokens_per_s,
+            ttft_target_s=ttft_target_s,
+            total_latency_target_s=total_latency_target_s,
+            throughput_target_tok_s=throughput_target_tok_s,
+            ttft_pass=ttft_pass,
+            total_latency_pass=total_latency_pass,
+            throughput_pass=throughput_pass,
+            meets_targets=ttft_pass and total_latency_pass and throughput_pass,
             output_chars=len(output_text),
             status="ok",
             error="",
@@ -231,10 +260,14 @@ def call_streaming_chat(
             run_index,
             concurrency,
             model,
+            precision_label,
             max_tokens,
             enable_thinking,
             input_chars,
             estimated_input_tokens,
+            ttft_target_s,
+            total_latency_target_s,
+            throughput_target_tok_s,
             f"HTTP {exc.code}: {body[:500]}",
         )
     except Exception as exc:
@@ -243,10 +276,14 @@ def call_streaming_chat(
             run_index,
             concurrency,
             model,
+            precision_label,
             max_tokens,
             enable_thinking,
             input_chars,
             estimated_input_tokens,
+            ttft_target_s,
+            total_latency_target_s,
+            throughput_target_tok_s,
             repr(exc),
         )
 
@@ -256,10 +293,14 @@ def error_result(
     run_index: int,
     concurrency: int,
     model: str,
+    precision_label: str,
     max_tokens: int,
     enable_thinking: bool,
     input_chars: int,
     estimated_input_tokens: int,
+    ttft_target_s: float,
+    total_latency_target_s: float,
+    throughput_target_tok_s: float,
     error: str,
 ) -> RunResult:
     return RunResult(
@@ -267,6 +308,7 @@ def error_result(
         run_index=run_index,
         concurrency=concurrency,
         model=model,
+        precision_label=precision_label,
         max_tokens=max_tokens,
         enable_thinking=enable_thinking,
         input_chars=input_chars,
@@ -277,6 +319,13 @@ def error_result(
         output_tokens_source="none",
         decode_tokens_per_s=None,
         e2e_tokens_per_s=None,
+        ttft_target_s=ttft_target_s,
+        total_latency_target_s=total_latency_target_s,
+        throughput_target_tok_s=throughput_target_tok_s,
+        ttft_pass=False,
+        total_latency_pass=False,
+        throughput_pass=False,
+        meets_targets=False,
         output_chars=0,
         status="error",
         error=error,
@@ -339,6 +388,15 @@ def print_summary(results: list[RunResult]) -> None:
             f" max={max(output_tokens):.0f}"
         )
 
+    meets_targets = [result for result in ok if result.meets_targets]
+    print(
+        f"{'Target pass':16}"
+        f" {len(meets_targets)}/{len(ok)} runs"
+        f" (TTFT <= {ok[0].ttft_target_s:.3f}s,"
+        f" total <= {ok[0].total_latency_target_s:.3f}s,"
+        f" decode >= {ok[0].throughput_target_tok_s:.1f} tok/s)"
+    )
+
     if errors:
         print("\nFirst errors")
         for result in errors[:5]:
@@ -350,7 +408,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt-dir", default="of1-testprompts")
     parser.add_argument("--base-url", default=os.getenv("NVIDIA_BASE_URL", DEFAULT_BASE_URL))
     parser.add_argument("--model", default=os.getenv("NVIDIA_MODEL", DEFAULT_MODEL))
+    parser.add_argument("--precision-label", default=os.getenv("NVIDIA_PRECISION_LABEL", "hosted-managed"))
     parser.add_argument("--api-key-env", default="NVIDIA_API_KEY")
+    parser.add_argument(
+        "--allow-missing-api-key",
+        action="store_true",
+        help="Allow requests without an Authorization header for local/self-hosted OpenAI-compatible endpoints.",
+    )
     parser.add_argument("--max-tokens", type=int, default=1024)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument(
@@ -361,14 +425,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--timeout-s", type=int, default=180)
+    parser.add_argument("--ttft-target-s", type=float, default=2.0)
+    parser.add_argument("--total-latency-target-s", type=float, default=5.0)
+    parser.add_argument("--throughput-target-tok-s", type=float, default=200.0)
     parser.add_argument("--output", default="")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    api_key = os.getenv(args.api_key_env)
-    if not api_key:
+    api_key = os.getenv(args.api_key_env, "")
+    if not api_key and not args.allow_missing_api_key:
         print(f"Missing API key. Set {args.api_key_env}=<your NVIDIA API key>.", file=sys.stderr)
         return 2
 
@@ -392,6 +459,7 @@ def main() -> int:
                 base_url=args.base_url,
                 api_key=api_key,
                 model=args.model,
+                precision_label=args.precision_label,
                 messages=messages,
                 prompt_file=path.name,
                 run_index=run_index,
@@ -399,6 +467,9 @@ def main() -> int:
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
                 enable_thinking=args.enable_thinking,
+                ttft_target_s=args.ttft_target_s,
+                total_latency_target_s=args.total_latency_target_s,
+                throughput_target_tok_s=args.throughput_target_tok_s,
                 timeout_s=args.timeout_s,
             )
             for path, messages, run_index in tasks
