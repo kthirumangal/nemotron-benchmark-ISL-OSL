@@ -40,6 +40,34 @@ export NVIDIA_BASE_URL="https://integrate.api.nvidia.com/v1"
 export NVIDIA_MODEL="nvidia/nemotron-3-nano-30b-a3b"
 ```
 
+## Brev Notebook Workflow
+
+Clone the repo on Brev:
+
+```bash
+git clone https://github.com/kthirumangal/nemotron-benchmark-ISL-OSL.git
+cd nemotron-benchmark-ISL-OSL
+```
+
+Install notebook dependencies:
+
+```bash
+python3 -m pip install -r requirements-notebook.txt
+```
+
+Open:
+
+```text
+notebooks/benchmark_visualization.ipynb
+```
+
+The notebook lets you:
+
+- Review/edit `precision_matrix.example.csv`
+- Run the benchmark matrix after your endpoints are live
+- Load the latest `results/precision-matrix-*/summary.csv`
+- Plot p90 TTFT, p90 total latency, p50 decode throughput, and pass/fail status
+
 ## Run
 
 Single-run latency check:
