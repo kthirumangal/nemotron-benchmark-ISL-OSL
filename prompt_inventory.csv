@@ -1,0 +1,6 @@
+prompt_file,query,input_tokens_nemotron_nano,input_chars,system_chars,user_chars
+01-best-features.json,best features,14157,57118,55360,1758
+02-milk-steaming-follow-up.json,which Arco machines have the best milk steaming and frothing,14536,58957,56070,2887
+03-marzocco.json,marzocco,14047,56651,54898,1753
+04-i-am-a-cyclist.json,i am a cyclist,12420,51313,49510,1803
+05-coffee-before-swimming.json,Should I drink coffee before swimming,14136,57003,55220,1783

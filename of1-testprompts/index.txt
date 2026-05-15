@@ -1,0 +1,10 @@
+Arco session prompt export
+
+Each JSON file is a chat-message array ready for reuse in experiments.
+The third assistant message is intentionally blank as a placeholder for model output.
+
+01-best-features.json
+02-milk-steaming-follow-up.json
+03-marzocco.json
+04-i-am-a-cyclist.json
+05-coffee-before-swimming.json
