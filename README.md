@@ -11,9 +11,12 @@ It measures:
 - Output tokens: provider usage when returned, otherwise a character-based estimate
 - Target pass/fail: defaults to TTFT <= 2s, total latency <= 5s, and decode throughput >= 200 tok/s
 
-By default the script sends `chat_template_kwargs: {"enable_thinking": false}` for Nemotron deployments so the benchmark measures structured website output rather than additional reasoning traces. Use `--enable-thinking` if you explicitly want to benchmark Nemotron reasoning mode.
+Reasoning is off / not requested by default for all benchmark rows:
 
-For GPT-OSS deployments, use `--omit-chat-template-kwargs` because many OpenAI-compatible runtimes/providers will reject Nemotron/vLLM-specific extra fields. The matrix also includes a `system_reasoning_effort=low` GPT-OSS row, which prepends `Reasoning: low` to the system prompt to test the lower-latency reasoning setting.
+- Nemotron rows send `chat_template_kwargs: {"enable_thinking": false}`.
+- GPT-OSS rows do not prepend a `Reasoning:` instruction by default.
+
+Use `--enable-thinking` for Nemotron or `--system-reasoning-effort low|medium|high` for GPT-OSS only when you explicitly want a separate reasoning-mode comparison.
 
 ## Setup
 
@@ -92,7 +95,7 @@ python3 benchmark_nano.py \
   --concurrency 5
 ```
 
-Reasoning-mode comparison:
+Optional reasoning-mode comparison, not part of the default latency matrix:
 
 ```bash
 python3 benchmark_nano.py \
@@ -187,7 +190,7 @@ Key columns:
 ## Model Notes
 
 - `Nemotron-3-Nano-30B-A3B`: matrix rows include BF16, FP8, and NVFP4 self-hosted profiles.
-- `openai/gpt-oss-120b`: matrix rows include MXFP4 default and MXFP4 with `Reasoning: low`.
+- `openai/gpt-oss-120b`: matrix rows include MXFP4 with no reasoning instruction by default.
 - GPT-OSS requires the harmony response format. OpenAI-compatible runtimes such as vLLM should apply the chat format for `/v1/chat/completions`.
 
 References:
