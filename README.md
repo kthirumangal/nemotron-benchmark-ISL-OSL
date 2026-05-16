@@ -42,6 +42,8 @@ export NVIDIA_MODEL="nvidia/nemotron-3-nano-30b-a3b"
 
 ## Brev Notebook Workflow
 
+Brev often opens directly into a notebook instance. You can run setup either from a terminal or from notebook cells.
+
 Clone the repo on Brev:
 
 ```bash
@@ -49,10 +51,56 @@ git clone https://github.com/kthirumangal/nemotron-benchmark-ISL-OSL.git
 cd nemotron-benchmark-ISL-OSL
 ```
 
+If you are inside a notebook cell, use:
+
+```python
+!git clone https://github.com/kthirumangal/nemotron-benchmark-ISL-OSL.git
+%cd nemotron-benchmark-ISL-OSL
+```
+
 Install notebook dependencies:
 
 ```bash
 python3 -m pip install -r requirements-notebook.txt
+```
+
+If Brev reports `No module named pip`, bootstrap `pip` in the active Python environment:
+
+```bash
+python3 -m ensurepip --upgrade
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements-notebook.txt
+```
+
+If `ensurepip` is unavailable:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-pip python3-venv
+python3 -m ensurepip --upgrade
+python3 -m pip install -r requirements-notebook.txt
+```
+
+If Brev is using `/home/ubuntu/.venv`, call that Python directly:
+
+```bash
+/home/ubuntu/.venv/bin/python -m ensurepip --upgrade
+/home/ubuntu/.venv/bin/python -m pip install --upgrade pip
+/home/ubuntu/.venv/bin/python -m pip install -r requirements-notebook.txt
+```
+
+From a notebook cell, prefix shell commands with `!`:
+
+```python
+!python3 -m ensurepip --upgrade
+!python3 -m pip install --upgrade pip
+!python3 -m pip install -r requirements-notebook.txt
+```
+
+As a fallback, install only the packages needed for visualization:
+
+```bash
+python3 -m pip install pandas matplotlib
 ```
 
 Open:
@@ -67,6 +115,8 @@ The notebook lets you:
 - Run the benchmark matrix after your endpoints are live
 - Load the latest `results/precision-matrix-*/summary.csv`
 - Plot p90 TTFT, p90 total latency, p50 decode throughput, and pass/fail status
+
+If your Brev instance has one GPU, do not try to run every model endpoint at the same time. Keep only the active endpoint row in `precision_matrix.example.csv`, run the matrix, save results, then switch to the next endpoint/profile.
 
 ## Run
 
