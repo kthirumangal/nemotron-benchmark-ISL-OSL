@@ -2,6 +2,35 @@
 
 Brev may open directly into a notebook environment. You can use either terminal commands or notebook cells.
 
+## Read This First
+
+The benchmark does not start local models for you.
+
+It has two modes:
+
+1. Hosted NVIDIA API: runs immediately after `NVIDIA_API_KEY` is set.
+2. Local/self-hosted models: requires you to start an OpenAI-compatible server first.
+
+The local rows in `precision_matrix.example.csv` are just URLs:
+
+```text
+localhost:8001 -> Nemotron BF16
+localhost:8002 -> Nemotron FP8
+localhost:8003 -> Nemotron NVFP4
+localhost:8004 -> GPT-OSS 120B
+```
+
+Before setting any local row to `enabled=true`, verify it:
+
+```bash
+curl http://localhost:8001/v1/models
+curl http://localhost:8002/v1/models
+curl http://localhost:8003/v1/models
+curl http://localhost:8004/v1/models
+```
+
+If `curl` says `Connection refused`, there is no server running on that port. Leave that row disabled.
+
 ## Clone
 
 Terminal:

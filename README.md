@@ -18,6 +18,66 @@ Reasoning is off / not requested by default for all benchmark rows:
 
 Use `--enable-thinking` for Nemotron or `--system-reasoning-effort low|medium|high` for GPT-OSS only when you explicitly want a separate reasoning-mode comparison.
 
+## Start Here: How To Run
+
+There are two different ways to run this benchmark:
+
+### 1. Hosted NVIDIA API
+
+This runs immediately after you set `NVIDIA_API_KEY`. You do not need to start any local model server.
+
+Use this first to confirm the benchmark works:
+
+```bash
+export NVIDIA_API_KEY="your_key_here"
+python3 benchmark_precision_matrix.py \
+  --matrix precision_matrix.example.csv \
+  --prompt-dir of1-testprompts \
+  --ttft-target-s 2.0 \
+  --total-latency-target-s 5.0 \
+  --throughput-target-tok-s 200
+```
+
+By default, `precision_matrix.example.csv` enables only:
+
+```text
+hosted-managed -> https://integrate.api.nvidia.com/v1
+```
+
+### 2. Local/Self-Hosted Models
+
+These rows do not run until you start a local OpenAI-compatible model server yourself.
+
+The CSV rows are only endpoints. They do not launch models.
+
+```text
+localhost:8001 -> Nemotron BF16 server must already be running
+localhost:8002 -> Nemotron FP8 server must already be running
+localhost:8003 -> Nemotron NVFP4 server must already be running
+localhost:8004 -> GPT-OSS 120B server must already be running
+```
+
+Before enabling a local row, verify the server exists:
+
+```bash
+curl http://localhost:8001/v1/models
+curl http://localhost:8002/v1/models
+curl http://localhost:8003/v1/models
+curl http://localhost:8004/v1/models
+```
+
+If `curl` returns `Connection refused`, that row is not runnable yet. Keep it `enabled=false`.
+
+On a one-GPU Brev instance, run local models one at a time:
+
+1. Start one local model server.
+2. Verify it with `curl http://localhost:<port>/v1/models`.
+3. Set only that row to `enabled=true`.
+4. Run the benchmark.
+5. Stop the server.
+6. Repeat for the next model/profile.
+7. Run `python3 combine_results.py` to compare all result folders side by side.
+
 ## Setup
 
 Set your NVIDIA API key:
