@@ -231,10 +231,80 @@ def call_streaming_chat(
             output_tokens = estimate_tokens(output_text)
             output_tokens_source = "estimated_chars"
 
+        if not output_text:
+            return RunResult(
+                prompt_file=prompt_file,
+                run_index=run_index,
+                concurrency=concurrency,
+                model=model,
+                precision_label=precision_label,
+                max_tokens=max_tokens,
+                enable_thinking=enable_thinking,
+                chat_template_kwargs_enabled=not omit_chat_template_kwargs,
+                system_reasoning_effort=system_reasoning_effort,
+                input_chars=input_chars,
+                estimated_input_tokens=estimated_input_tokens,
+                ttft_s=None,
+                total_latency_s=total_latency_s,
+                output_tokens=output_tokens,
+                output_tokens_source=output_tokens_source,
+                decode_tokens_per_s=None,
+                e2e_tokens_per_s=(
+                    output_tokens / total_latency_s if total_latency_s > 0 else None
+                ),
+                ttft_target_s=ttft_target_s,
+                total_latency_target_s=total_latency_target_s,
+                throughput_target_tok_s=throughput_target_tok_s,
+                ttft_pass=False,
+                total_latency_pass=total_latency_s <= total_latency_target_s,
+                throughput_pass=False,
+                meets_targets=False,
+                output_chars=0,
+                status="error",
+                error=(
+                    "No streamed visible content captured. The endpoint may have "
+                    "emitted only hidden/reasoning tokens, non-content SSE deltas, "
+                    "or an empty completion."
+                ),
+            )
+
         if ttft_s is not None and total_latency_s > ttft_s:
             decode_tokens_per_s = output_tokens / (total_latency_s - ttft_s)
         else:
             decode_tokens_per_s = None
+
+        if decode_tokens_per_s is None:
+            return RunResult(
+                prompt_file=prompt_file,
+                run_index=run_index,
+                concurrency=concurrency,
+                model=model,
+                precision_label=precision_label,
+                max_tokens=max_tokens,
+                enable_thinking=enable_thinking,
+                chat_template_kwargs_enabled=not omit_chat_template_kwargs,
+                system_reasoning_effort=system_reasoning_effort,
+                input_chars=input_chars,
+                estimated_input_tokens=estimated_input_tokens,
+                ttft_s=ttft_s,
+                total_latency_s=total_latency_s,
+                output_tokens=output_tokens,
+                output_tokens_source=output_tokens_source,
+                decode_tokens_per_s=None,
+                e2e_tokens_per_s=(
+                    output_tokens / total_latency_s if total_latency_s > 0 else None
+                ),
+                ttft_target_s=ttft_target_s,
+                total_latency_target_s=total_latency_target_s,
+                throughput_target_tok_s=throughput_target_tok_s,
+                ttft_pass=False,
+                total_latency_pass=total_latency_s <= total_latency_target_s,
+                throughput_pass=False,
+                meets_targets=False,
+                output_chars=len(output_text),
+                status="error",
+                error="Could not compute decode throughput because TTFT was not captured.",
+            )
 
         e2e_tokens_per_s = output_tokens / total_latency_s if total_latency_s > 0 else None
         ttft_pass = ttft_s is not None and ttft_s <= ttft_target_s
