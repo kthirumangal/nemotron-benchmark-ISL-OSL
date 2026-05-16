@@ -60,6 +60,11 @@ class RunResult:
     throughput_pass: bool
     meets_targets: bool
     output_chars: int
+    measurement_mode: str
+    visible_output_captured: bool
+    ttft_measured: bool
+    decode_throughput_measured: bool
+    measurement_quality: str
     status: str
     error: str
 
@@ -164,6 +169,7 @@ def call_streaming_chat(
     enable_thinking: bool,
     omit_chat_template_kwargs: bool,
     system_reasoning_effort: str,
+    measurement_mode: str,
     ttft_target_s: float,
     total_latency_target_s: float,
     throughput_target_tok_s: float,
@@ -232,6 +238,7 @@ def call_streaming_chat(
             output_tokens_source = "estimated_chars"
 
         if not output_text:
+            is_lenient = measurement_mode == "lenient"
             return RunResult(
                 prompt_file=prompt_file,
                 run_index=run_index,
@@ -260,8 +267,13 @@ def call_streaming_chat(
                 throughput_pass=False,
                 meets_targets=False,
                 output_chars=0,
-                status="error",
-                error=(
+                measurement_mode=measurement_mode,
+                visible_output_captured=False,
+                ttft_measured=False,
+                decode_throughput_measured=False,
+                measurement_quality="usage_only_no_visible_output",
+                status="ok" if is_lenient else "error",
+                error="" if is_lenient else (
                     "No streamed visible content captured. The endpoint may have "
                     "emitted only hidden/reasoning tokens, non-content SSE deltas, "
                     "or an empty completion."
@@ -274,6 +286,7 @@ def call_streaming_chat(
             decode_tokens_per_s = None
 
         if decode_tokens_per_s is None:
+            is_lenient = measurement_mode == "lenient"
             return RunResult(
                 prompt_file=prompt_file,
                 run_index=run_index,
@@ -302,8 +315,17 @@ def call_streaming_chat(
                 throughput_pass=False,
                 meets_targets=False,
                 output_chars=len(output_text),
-                status="error",
-                error="Could not compute decode throughput because TTFT was not captured.",
+                measurement_mode=measurement_mode,
+                visible_output_captured=bool(output_text),
+                ttft_measured=ttft_s is not None,
+                decode_throughput_measured=False,
+                measurement_quality="missing_decode_throughput",
+                status="ok" if is_lenient else "error",
+                error=(
+                    ""
+                    if is_lenient
+                    else "Could not compute decode throughput because TTFT was not captured."
+                ),
             )
 
         e2e_tokens_per_s = output_tokens / total_latency_s if total_latency_s > 0 else None
@@ -340,6 +362,11 @@ def call_streaming_chat(
             throughput_pass=throughput_pass,
             meets_targets=ttft_pass and total_latency_pass and throughput_pass,
             output_chars=len(output_text),
+            measurement_mode=measurement_mode,
+            visible_output_captured=True,
+            ttft_measured=True,
+            decode_throughput_measured=True,
+            measurement_quality="complete",
             status="ok",
             error="",
         )
@@ -359,6 +386,7 @@ def call_streaming_chat(
             enable_thinking,
             not omit_chat_template_kwargs,
             system_reasoning_effort,
+            measurement_mode,
             input_chars,
             estimated_input_tokens,
             ttft_target_s,
@@ -377,6 +405,7 @@ def call_streaming_chat(
             enable_thinking,
             not omit_chat_template_kwargs,
             system_reasoning_effort,
+            measurement_mode,
             input_chars,
             estimated_input_tokens,
             ttft_target_s,
@@ -396,6 +425,7 @@ def error_result(
     enable_thinking: bool,
     chat_template_kwargs_enabled: bool,
     system_reasoning_effort: str,
+    measurement_mode: str,
     input_chars: int,
     estimated_input_tokens: int,
     ttft_target_s: float,
@@ -429,6 +459,11 @@ def error_result(
         throughput_pass=False,
         meets_targets=False,
         output_chars=0,
+        measurement_mode=measurement_mode,
+        visible_output_captured=False,
+        ttft_measured=False,
+        decode_throughput_measured=False,
+        measurement_quality="request_error",
         status="error",
         error=error,
     )
@@ -479,6 +514,7 @@ def print_summary(results: list[RunResult]) -> None:
             f" p99={percentile(series, 0.99):.3f}"
             f" min={min(series):.3f}"
             f" max={max(series):.3f}"
+            f" n={len(series)}/{len(ok)}"
         )
 
     output_tokens = [result.output_tokens for result in ok if result.output_tokens is not None]
@@ -489,6 +525,20 @@ def print_summary(results: list[RunResult]) -> None:
             f" min={min(output_tokens):.0f}"
             f" max={max(output_tokens):.0f}"
         )
+
+    visible_output = [result for result in ok if result.visible_output_captured]
+    ttft_measured = [result for result in ok if result.ttft_measured]
+    decode_measured = [result for result in ok if result.decode_throughput_measured]
+    complete_measurement = [
+        result for result in ok if result.measurement_quality == "complete"
+    ]
+    print(
+        f"{'Measurement':16}"
+        f" visible_output={len(visible_output)}/{len(ok)}"
+        f" ttft={len(ttft_measured)}/{len(ok)}"
+        f" decode={len(decode_measured)}/{len(ok)}"
+        f" complete={len(complete_measurement)}/{len(ok)}"
+    )
 
     meets_targets = [result for result in ok if result.meets_targets]
     print(
@@ -503,6 +553,19 @@ def print_summary(results: list[RunResult]) -> None:
         print("\nFirst errors")
         for result in errors[:5]:
             print(f"- {result.prompt_file} run {result.run_index}: {result.error}")
+
+    quality_notes = [
+        result
+        for result in ok
+        if result.measurement_quality not in {"complete", ""}
+    ]
+    if quality_notes:
+        print("\nFirst measurement notes")
+        for result in quality_notes[:5]:
+            print(
+                f"- {result.prompt_file} run {result.run_index}: "
+                f"{result.measurement_quality}"
+            )
 
 
 def parse_args() -> argparse.Namespace:
@@ -534,6 +597,15 @@ def parse_args() -> argparse.Namespace:
         choices=["", "low", "medium", "high"],
         default="",
         help="Optionally prepend 'Reasoning: <effort>' to the system prompt, useful for GPT-OSS comparisons.",
+    )
+    parser.add_argument(
+        "--measurement-mode",
+        choices=["strict", "lenient"],
+        default="strict",
+        help=(
+            "strict marks rows without visible streamed content/TTFT/decode throughput as errors. "
+            "lenient keeps completed HTTP responses as ok and records missing metrics as not measured."
+        ),
     )
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=1)
@@ -585,6 +657,7 @@ def main() -> int:
                 enable_thinking=args.enable_thinking,
                 omit_chat_template_kwargs=args.omit_chat_template_kwargs,
                 system_reasoning_effort=args.system_reasoning_effort,
+                measurement_mode=args.measurement_mode,
                 ttft_target_s=args.ttft_target_s,
                 total_latency_target_s=args.total_latency_target_s,
                 throughput_target_tok_s=args.throughput_target_tok_s,

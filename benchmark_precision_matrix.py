@@ -56,6 +56,13 @@ def as_float(raw: str) -> Optional[float]:
         return None
 
 
+def as_int(raw: str) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
 def summarize_csv(path: pathlib.Path) -> dict[str, str]:
     if not path.exists():
         return {
@@ -70,6 +77,13 @@ def summarize_csv(path: pathlib.Path) -> dict[str, str]:
             "p50_decode_tok_s": "",
             "p90_decode_tok_s": "",
             "p99_decode_tok_s": "",
+            "p50_e2e_tok_s": "",
+            "p90_e2e_tok_s": "",
+            "p99_e2e_tok_s": "",
+            "visible_output_runs": "0",
+            "ttft_measured_runs": "0",
+            "decode_measured_runs": "0",
+            "complete_measurement_runs": "0",
             "meets_targets_runs": "0",
             "total_runs": "0",
         }
@@ -93,7 +107,16 @@ def summarize_csv(path: pathlib.Path) -> dict[str, str]:
     ttft = series("ttft_s")
     total = series("total_latency_s")
     decode = series("decode_tokens_per_s")
+    e2e = series("e2e_tokens_per_s")
     meets_targets = [row for row in ok if truthy(row.get("meets_targets", ""))]
+    visible_output = [row for row in ok if truthy(row.get("visible_output_captured", ""))]
+    ttft_measured = [row for row in ok if truthy(row.get("ttft_measured", ""))]
+    decode_measured = [
+        row for row in ok if truthy(row.get("decode_throughput_measured", ""))
+    ]
+    complete_measurement = [
+        row for row in ok if row.get("measurement_quality", "") == "complete"
+    ]
 
     return {
         "completed": str(len(ok)),
@@ -107,6 +130,13 @@ def summarize_csv(path: pathlib.Path) -> dict[str, str]:
         "p50_decode_tok_s": fmt(percentile(decode, 0.50)),
         "p90_decode_tok_s": fmt(percentile(decode, 0.90)),
         "p99_decode_tok_s": fmt(percentile(decode, 0.99)),
+        "p50_e2e_tok_s": fmt(percentile(e2e, 0.50)),
+        "p90_e2e_tok_s": fmt(percentile(e2e, 0.90)),
+        "p99_e2e_tok_s": fmt(percentile(e2e, 0.99)),
+        "visible_output_runs": str(len(visible_output)),
+        "ttft_measured_runs": str(len(ttft_measured)),
+        "decode_measured_runs": str(len(decode_measured)),
+        "complete_measurement_runs": str(len(complete_measurement)),
         "meets_targets_runs": str(len(meets_targets)),
         "total_runs": str(len(ok)),
     }
@@ -125,6 +155,13 @@ def empty_summary() -> dict[str, str]:
         "p50_decode_tok_s": "",
         "p90_decode_tok_s": "",
         "p99_decode_tok_s": "",
+        "p50_e2e_tok_s": "",
+        "p90_e2e_tok_s": "",
+        "p99_e2e_tok_s": "",
+        "visible_output_runs": "0",
+        "ttft_measured_runs": "0",
+        "decode_measured_runs": "0",
+        "complete_measurement_runs": "0",
         "meets_targets_runs": "0",
         "total_runs": "0",
     }
@@ -182,6 +219,7 @@ def main() -> int:
             "ttft_target_s": str(args.ttft_target_s),
             "total_latency_target_s": str(args.total_latency_target_s),
             "throughput_target_tok_s": str(args.throughput_target_tok_s),
+            "measurement_mode": value(row, "measurement_mode", "strict"),
         }
 
         if not enabled:
@@ -194,6 +232,7 @@ def main() -> int:
                     "p90_ttft_pass": "False",
                     "p90_total_latency_pass": "False",
                     "p50_decode_throughput_pass": "False",
+                    "measurement_complete_pass": "False",
                     "meets_p90_targets": "False",
                     **empty_summary(),
                 }
@@ -213,6 +252,7 @@ def main() -> int:
                     "p90_ttft_pass": "False",
                     "p90_total_latency_pass": "False",
                     "p50_decode_throughput_pass": "False",
+                    "measurement_complete_pass": "False",
                     "meets_p90_targets": "False",
                     **empty_summary(),
                 }
@@ -248,6 +288,8 @@ def main() -> int:
             str(args.total_latency_target_s),
             "--throughput-target-tok-s",
             str(args.throughput_target_tok_s),
+            "--measurement-mode",
+            value(row, "measurement_mode", "strict"),
             "--output",
             str(out_csv),
         ]
@@ -272,6 +314,11 @@ def main() -> int:
         p90_ttft_pass = p90_ttft is not None and p90_ttft <= args.ttft_target_s
         p90_total_pass = p90_total is not None and p90_total <= args.total_latency_target_s
         p50_decode_pass = p50_decode is not None and p50_decode >= args.throughput_target_tok_s
+        completed_count = as_int(profile_summary["completed"])
+        complete_measurement_count = as_int(profile_summary["complete_measurement_runs"])
+        measurement_complete_pass = (
+            completed_count > 0 and complete_measurement_count == completed_count
+        )
 
         summary_rows.append(
             {
@@ -281,7 +328,13 @@ def main() -> int:
                 "p90_ttft_pass": str(p90_ttft_pass),
                 "p90_total_latency_pass": str(p90_total_pass),
                 "p50_decode_throughput_pass": str(p50_decode_pass),
-                "meets_p90_targets": str(p90_ttft_pass and p90_total_pass and p50_decode_pass),
+                "measurement_complete_pass": str(measurement_complete_pass),
+                "meets_p90_targets": str(
+                    p90_ttft_pass
+                    and p90_total_pass
+                    and p50_decode_pass
+                    and measurement_complete_pass
+                ),
                 **profile_summary,
             }
         )

@@ -9,6 +9,7 @@ It measures:
 - Decode throughput: output tokens per second after TTFT
 - E2E throughput: output tokens per second over the full request
 - Output tokens: provider usage when returned, otherwise a character-based estimate
+- Measurement coverage: whether visible streamed output, TTFT, and decode throughput were actually captured
 - Target pass/fail: defaults to TTFT <= 2s, total latency <= 5s, and decode throughput >= 200 tok/s
 
 Reasoning is off / not requested by default for all benchmark rows:
@@ -17,6 +18,15 @@ Reasoning is off / not requested by default for all benchmark rows:
 - GPT-OSS rows do not prepend a `Reasoning:` instruction by default.
 
 Use `--enable-thinking` for Nemotron or `--system-reasoning-effort low|medium|high` for GPT-OSS only when you explicitly want a separate reasoning-mode comparison.
+
+## Measurement Modes
+
+The benchmark supports two measurement modes:
+
+- `strict`: a completed HTTP response is marked `error` if no visible streamed content, TTFT, or decode throughput was captured.
+- `lenient`: a completed HTTP response remains `ok`, but missing TTFT/decode metrics are recorded as not measured.
+
+Use `strict` for clean apples-to-apples streaming comparisons. Use `lenient` for GPT-OSS or other runtimes where provider usage and total latency may be available even when visible streamed content is not captured by this client. The matrix examples set GPT-OSS to `lenient` and Nano rows to `strict`.
 
 ## Start Here: How To Run
 
@@ -369,6 +379,11 @@ Key columns:
 - `output_tokens`
 - `decode_tokens_per_s`
 - `e2e_tokens_per_s`
+- `measurement_mode`
+- `visible_output_captured`
+- `ttft_measured`
+- `decode_throughput_measured`
+- `measurement_quality`
 - `status`
 - `error`
 

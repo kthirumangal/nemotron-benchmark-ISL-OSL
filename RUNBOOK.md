@@ -41,6 +41,17 @@ curl http://localhost:8004/v1/models
 
 If you get `Connection refused`, do not enable that row.
 
+## Measurement Modes
+
+The matrix has a `measurement_mode` column.
+
+```text
+strict  -> missing visible streamed output / TTFT / decode throughput becomes an error
+lenient -> completed responses stay ok, but missing metrics are marked as not measured
+```
+
+Keep Nano rows as `strict`. Use `lenient` for GPT-OSS if you want to preserve total latency, provider token usage, and E2E throughput even when this benchmark client does not capture visible streamed content for every run.
+
 ## One-GPU Workflow
 
 On one GPU, benchmark one local model/profile at a time.

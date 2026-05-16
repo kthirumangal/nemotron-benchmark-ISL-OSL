@@ -118,6 +118,8 @@ The default matrix enables only the hosted NVIDIA API row. Local rows are disabl
 
 If the hosted row is enabled but `NVIDIA_API_KEY` is missing, the matrix runner skips it and records `skip_reason=missing NVIDIA_API_KEY`.
 
+The matrix has a `measurement_mode` column. Keep Nano rows as `strict`. Use `lenient` for GPT-OSS when you want to keep completed responses, total latency, provider token usage, and E2E throughput even if this client does not capture visible streamed output for every prompt. The visualization should then use the coverage columns to show which TTFT/decode metrics are actually measured.
+
 After you run several one-endpoint benchmarks, combine them:
 
 ```bash
