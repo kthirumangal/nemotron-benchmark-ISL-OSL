@@ -1,0 +1,6 @@
+enabled,label,precision,base_url,model,api_key_env,allow_missing_api_key,max_tokens,runs,concurrency,timeout_s,temperature,enable_thinking,omit_chat_template_kwargs,system_reasoning_effort
+true,hosted-managed,hosted-managed,https://integrate.api.nvidia.com/v1,nvidia/nemotron-3-nano-30b-a3b,NVIDIA_API_KEY,false,1024,3,1,180,0.0,false,false,
+true,selfhost-nemotron-bf16,BF16,http://localhost:8001/v1,nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16,,true,1024,3,1,180,0.0,false,false,
+true,selfhost-nemotron-fp8,FP8,http://localhost:8002/v1,nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8,,true,1024,3,1,180,0.0,false,false,
+true,selfhost-nemotron-nvfp4,NVFP4,http://localhost:8003/v1,nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4,,true,1024,3,1,180,0.0,false,false,
+true,selfhost-gpt-oss-120b-mxfp4,MXFP4,http://localhost:8004/v1,openai/gpt-oss-120b,,true,1024,3,1,180,0.0,false,true,

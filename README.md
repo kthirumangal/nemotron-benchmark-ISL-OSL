@@ -196,11 +196,32 @@ Edit:
 precision_matrix.example.csv
 ```
 
+Use `precision_matrix.example.csv` for the safe default: hosted API enabled, local endpoints disabled.
+
+Use `precision_matrix.all-local.example.csv` when every endpoint is live and you want side-by-side results for:
+
+- Hosted managed Nemotron 3 Nano
+- Self-hosted Nemotron BF16
+- Self-hosted Nemotron FP8
+- Self-hosted Nemotron NVFP4
+- Self-hosted GPT-OSS 120B MXFP4
+
 Then run:
 
 ```bash
 python3 benchmark_precision_matrix.py \
   --matrix precision_matrix.example.csv \
+  --prompt-dir of1-testprompts \
+  --ttft-target-s 2.0 \
+  --total-latency-target-s 5.0 \
+  --throughput-target-tok-s 200
+```
+
+All-endpoint comparison:
+
+```bash
+python3 benchmark_precision_matrix.py \
+  --matrix precision_matrix.all-local.example.csv \
   --prompt-dir of1-testprompts \
   --ttft-target-s 2.0 \
   --total-latency-target-s 5.0 \
