@@ -89,6 +89,19 @@ The default matrix enables only the hosted NVIDIA API row. Local rows are disabl
 
 If the hosted row is enabled but `NVIDIA_API_KEY` is missing, the matrix runner skips it and records `skip_reason=missing NVIDIA_API_KEY`.
 
+After you run several one-endpoint benchmarks, combine them:
+
+```bash
+python3 combine_results.py
+```
+
+Combined outputs:
+
+```text
+results/combined-summary.csv
+results/combined-details.csv
+```
+
 ## Hosted NVIDIA API
 
 In a notebook cell:

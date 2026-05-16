@@ -118,6 +118,19 @@ The notebook lets you:
 
 If your Brev instance has one GPU, do not try to run every model endpoint at the same time. Keep only the active endpoint row set to `enabled=true` in `precision_matrix.example.csv`, run the matrix, save results, then switch to the next endpoint/profile.
 
+After running multiple one-endpoint benchmarks, combine them for side-by-side comparison:
+
+```bash
+python3 combine_results.py
+```
+
+This writes:
+
+```text
+results/combined-summary.csv
+results/combined-details.csv
+```
+
 ## Run
 
 Single-run latency check:
@@ -227,6 +240,15 @@ python3 benchmark_precision_matrix.py \
   --total-latency-target-s 5.0 \
   --throughput-target-tok-s 200
 ```
+
+Single-GPU comparison workflow:
+
+1. Start one model endpoint.
+2. Set only that row to `enabled=true` in `precision_matrix.example.csv`.
+3. Run `benchmark_precision_matrix.py`.
+4. Stop that endpoint.
+5. Repeat for the next model/profile.
+6. Run `python3 combine_results.py` to create combined side-by-side CSVs.
 
 The matrix runner writes one CSV per profile plus a summary:
 
