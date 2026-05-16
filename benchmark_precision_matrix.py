@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import pathlib
 import re
 import statistics
@@ -111,6 +112,24 @@ def summarize_csv(path: pathlib.Path) -> dict[str, str]:
     }
 
 
+def empty_summary() -> dict[str, str]:
+    return {
+        "completed": "0",
+        "errors": "0",
+        "p50_ttft_s": "",
+        "p90_ttft_s": "",
+        "p99_ttft_s": "",
+        "p50_total_latency_s": "",
+        "p90_total_latency_s": "",
+        "p99_total_latency_s": "",
+        "p50_decode_tok_s": "",
+        "p90_decode_tok_s": "",
+        "p99_decode_tok_s": "",
+        "meets_targets_runs": "0",
+        "total_runs": "0",
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run precision-profile benchmark matrix.")
     parser.add_argument("--matrix", default="precision_matrix.example.csv")
@@ -149,6 +168,56 @@ def main() -> int:
         label = value(row, "label", "profile")
         precision = value(row, "precision", label)
         out_csv = output_dir / f"{sanitize(label)}.csv"
+        enabled_raw = row.get("enabled", "")
+        enabled = truthy(enabled_raw) if enabled_raw.strip() else True
+        api_key_env = value(row, "api_key_env", "NVIDIA_API_KEY")
+        allow_missing_api_key = truthy(row.get("allow_missing_api_key", ""))
+
+        base_summary = {
+            "label": label,
+            "precision": precision,
+            "base_url": value(row, "base_url", "https://integrate.api.nvidia.com/v1"),
+            "model": value(row, "model", "nvidia/nemotron-3-nano-30b-a3b"),
+            "output_csv": str(out_csv),
+            "ttft_target_s": str(args.ttft_target_s),
+            "total_latency_target_s": str(args.total_latency_target_s),
+            "throughput_target_tok_s": str(args.throughput_target_tok_s),
+        }
+
+        if not enabled:
+            print(f"\n=== Skipping {label} ({precision}): enabled=false ===", flush=True)
+            summary_rows.append(
+                {
+                    **base_summary,
+                    "exit_code": "skipped",
+                    "skip_reason": "enabled=false",
+                    "p90_ttft_pass": "False",
+                    "p90_total_latency_pass": "False",
+                    "p50_decode_throughput_pass": "False",
+                    "meets_p90_targets": "False",
+                    **empty_summary(),
+                }
+            )
+            continue
+
+        if not allow_missing_api_key and not os.getenv(api_key_env):
+            print(
+                f"\n=== Skipping {label} ({precision}): missing {api_key_env} ===",
+                flush=True,
+            )
+            summary_rows.append(
+                {
+                    **base_summary,
+                    "exit_code": "skipped",
+                    "skip_reason": f"missing {api_key_env}",
+                    "p90_ttft_pass": "False",
+                    "p90_total_latency_pass": "False",
+                    "p50_decode_throughput_pass": "False",
+                    "meets_p90_targets": "False",
+                    **empty_summary(),
+                }
+            )
+            continue
 
         command = [
             sys.executable,
@@ -162,7 +231,7 @@ def main() -> int:
             "--precision-label",
             precision,
             "--api-key-env",
-            value(row, "api_key_env", "NVIDIA_API_KEY"),
+            api_key_env,
             "--max-tokens",
             value(row, "max_tokens", args.default_max_tokens),
             "--runs",
@@ -187,7 +256,7 @@ def main() -> int:
             command.append("--enable-thinking")
         if truthy(row.get("omit_chat_template_kwargs", "")):
             command.append("--omit-chat-template-kwargs")
-        if truthy(row.get("allow_missing_api_key", "")):
+        if allow_missing_api_key:
             command.append("--allow-missing-api-key")
         reasoning_effort = value(row, "system_reasoning_effort", "")
         if reasoning_effort:
@@ -206,15 +275,9 @@ def main() -> int:
 
         summary_rows.append(
             {
-                "label": label,
-                "precision": precision,
-                "base_url": value(row, "base_url", "https://integrate.api.nvidia.com/v1"),
-                "model": value(row, "model", "nvidia/nemotron-3-nano-30b-a3b"),
+                **base_summary,
                 "exit_code": str(completed.returncode),
-                "output_csv": str(out_csv),
-                "ttft_target_s": str(args.ttft_target_s),
-                "total_latency_target_s": str(args.total_latency_target_s),
-                "throughput_target_tok_s": str(args.throughput_target_tok_s),
+                "skip_reason": "",
                 "p90_ttft_pass": str(p90_ttft_pass),
                 "p90_total_latency_pass": str(p90_total_pass),
                 "p50_decode_throughput_pass": str(p50_decode_pass),

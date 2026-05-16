@@ -116,7 +116,7 @@ The notebook lets you:
 - Load the latest `results/precision-matrix-*/summary.csv`
 - Plot p90 TTFT, p90 total latency, p50 decode throughput, and pass/fail status
 
-If your Brev instance has one GPU, do not try to run every model endpoint at the same time. Keep only the active endpoint row in `precision_matrix.example.csv`, run the matrix, save results, then switch to the next endpoint/profile.
+If your Brev instance has one GPU, do not try to run every model endpoint at the same time. Keep only the active endpoint row set to `enabled=true` in `precision_matrix.example.csv`, run the matrix, save results, then switch to the next endpoint/profile.
 
 ## Run
 
@@ -222,13 +222,17 @@ Summary pass/fail columns:
 
 For local endpoints without API keys, set `allow_missing_api_key=true` in the matrix CSV.
 
+The matrix CSV has an `enabled` column. Only rows with `enabled=true` run. The default file enables only the hosted NVIDIA API row and leaves local self-hosted rows disabled until you start those model servers. This avoids `ConnectionRefusedError` noise from localhost ports that are not live yet.
+
+If the hosted row is enabled but `NVIDIA_API_KEY` is not set, the matrix runner skips it and records `skip_reason=missing NVIDIA_API_KEY` in the summary instead of failing the whole run.
+
 Example GPT-OSS 120B vLLM server:
 
 ```bash
 vllm serve openai/gpt-oss-120b --host 0.0.0.0 --port 8004
 ```
 
-Then run just that row by copying or trimming `precision_matrix.example.csv`, or run the full matrix if all endpoints are available.
+Then change that GPT-OSS row to `enabled=true` in `precision_matrix.example.csv`, or run the full matrix if all endpoints are available.
 
 ## Suggested Benchmark Matrix
 

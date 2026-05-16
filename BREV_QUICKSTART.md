@@ -83,7 +83,11 @@ after your model endpoint is live.
 
 ## Run One Endpoint At A Time
 
-If your Brev instance has one GPU, edit `precision_matrix.example.csv` and keep only the row for the endpoint you are currently running. Run the notebook/benchmark, save results, then switch the CSV row for the next model or precision profile.
+If your Brev instance has one GPU, edit `precision_matrix.example.csv` and keep only the row for the endpoint you are currently running set to `enabled=true`. Leave other rows as `enabled=false`. Run the notebook/benchmark, save results, then switch the CSV row for the next model or precision profile.
+
+The default matrix enables only the hosted NVIDIA API row. Local rows are disabled until you start those servers.
+
+If the hosted row is enabled but `NVIDIA_API_KEY` is missing, the matrix runner skips it and records `skip_reason=missing NVIDIA_API_KEY`.
 
 ## Hosted NVIDIA API
 
