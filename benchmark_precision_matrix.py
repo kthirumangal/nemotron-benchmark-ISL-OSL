@@ -303,6 +303,22 @@ def main() -> int:
         reasoning_effort = value(row, "system_reasoning_effort", "")
         if reasoning_effort:
             command.extend(["--system-reasoning-effort", reasoning_effort])
+        api_reasoning_effort = value(row, "api_reasoning_effort", "")
+        if api_reasoning_effort:
+            command.extend(["--api-reasoning-effort", api_reasoning_effort])
+        if truthy(row.get("force_visible_output", "")):
+            command.append("--force-visible-output")
+        extra_body_json = value(row, "extra_body_json", "")
+        if extra_body_json:
+            command.extend(["--extra-body-json", extra_body_json])
+        if truthy(row.get("capture_reasoning_as_output", "")):
+            command.append("--capture-reasoning-as-output")
+        stream_debug_dir = value(row, "stream_debug_dir", "")
+        if stream_debug_dir:
+            debug_path = pathlib.Path(stream_debug_dir)
+            if not debug_path.is_absolute():
+                debug_path = output_dir / stream_debug_dir / sanitize(label)
+            command.extend(["--stream-debug-dir", str(debug_path)])
 
         print(f"\n=== Running {label} ({precision}) ===", flush=True)
         completed = subprocess.run(command, text=True)

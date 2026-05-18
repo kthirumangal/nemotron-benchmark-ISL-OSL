@@ -52,6 +52,42 @@ lenient -> completed responses stay ok, but missing metrics are marked as not me
 
 Keep Nano rows as `strict`. Use `lenient` for GPT-OSS if you want to preserve total latency, provider token usage, and E2E throughput even when this benchmark client does not capture visible streamed content for every run.
 
+## GPT-OSS Streaming Debug Workflow
+
+If GPT-OSS completes requests but TTFT/decode are blank for some prompts, do not treat that as a model failure yet. First check whether the endpoint streamed final visible content or only reasoning/non-content fields.
+
+Run a focused GPT-OSS pass:
+
+```bash
+python3 benchmark_nano.py \
+  --prompt-dir of1-testprompts \
+  --base-url http://localhost:8004/v1 \
+  --model openai/gpt-oss-120b \
+  --precision-label MXFP4 \
+  --allow-missing-api-key \
+  --omit-chat-template-kwargs \
+  --api-reasoning-effort low \
+  --force-visible-output \
+  --measurement-mode lenient \
+  --max-tokens 1024 \
+  --runs 3 \
+  --concurrency 1 \
+  --timeout-s 180 \
+  --stream-debug-dir results/gpt-oss-stream-debug \
+  --output results/gpt-oss-120b-mxfp4-stream-debug.csv
+```
+
+Interpretation:
+
+```text
+content_chunks > 0    -> final visible streamed content was captured and counts for TTFT/decode
+reasoning_chunks > 0  -> reasoning text streamed, but it does not count as visible output
+reasoning_only_no_visible_output -> server streamed/thought but did not expose final visible content
+usage_only_no_visible_output     -> request completed with usage/latency but no text fields were captured
+```
+
+Use `--capture-reasoning-as-output` only to debug stream timing. Do not use it for final customer-facing TTFT/decode results.
+
 ## One-GPU Workflow
 
 On one GPU, benchmark one local model/profile at a time.

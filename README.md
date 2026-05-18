@@ -12,12 +12,12 @@ It measures:
 - Measurement coverage: whether visible streamed output, TTFT, and decode throughput were actually captured
 - Target pass/fail: defaults to TTFT <= 2s, total latency <= 5s, and decode throughput >= 200 tok/s
 
-Reasoning is off / not requested by default for all benchmark rows:
+Reasoning is disabled where the serving path supports it, and minimized for GPT-OSS:
 
 - Nemotron rows send `chat_template_kwargs: {"enable_thinking": false}`.
-- GPT-OSS rows do not prepend a `Reasoning:` instruction by default.
+- GPT-OSS rows do not prepend a `Reasoning:` instruction by default. The example matrix sends request-level `reasoning_effort=low` because the GPT-OSS NIM API exposes `low`, `medium`, and `high` reasoning effort rather than an off switch. It also adds a visible-output instruction so the benchmark can test whether final assistant content is streamed consistently.
 
-Use `--enable-thinking` for Nemotron or `--system-reasoning-effort low|medium|high` for GPT-OSS only when you explicitly want a separate reasoning-mode comparison.
+Use `--enable-thinking` for Nemotron, `--api-reasoning-effort low|medium|high`, or `--system-reasoning-effort low|medium|high` only when you explicitly want a separate reasoning-mode comparison.
 
 ## Measurement Modes
 
@@ -27,6 +27,37 @@ The benchmark supports two measurement modes:
 - `lenient`: a completed HTTP response remains `ok`, but missing TTFT/decode metrics are recorded as not measured.
 
 Use `strict` for clean apples-to-apples streaming comparisons. Use `lenient` for GPT-OSS or other runtimes where provider usage and total latency may be available even when visible streamed content is not captured by this client. The matrix examples set GPT-OSS to `lenient` and Nano rows to `strict`.
+
+## GPT-OSS Streaming Diagnostics
+
+GPT-OSS is a reasoning model. Depending on the NIM/vLLM serving configuration, streamed chunks can carry text in final visible fields such as `delta.content`, or reasoning fields such as `delta.reasoning_content` / `delta.reasoning`. This benchmark now records both:
+
+- final visible content chunks count toward TTFT and decode throughput
+- reasoning chunks are counted separately in `reasoning_chunks` / `reasoning_chars`
+- `--stream-debug-dir <dir>` writes one JSONL trace per prompt run so you can inspect the exact streamed fields
+
+Recommended GPT-OSS diagnostic run:
+
+```bash
+python3 benchmark_nano.py \
+  --prompt-dir of1-testprompts \
+  --base-url http://localhost:8004/v1 \
+  --model openai/gpt-oss-120b \
+  --precision-label MXFP4 \
+  --allow-missing-api-key \
+  --omit-chat-template-kwargs \
+  --api-reasoning-effort low \
+  --force-visible-output \
+  --measurement-mode lenient \
+  --max-tokens 1024 \
+  --runs 3 \
+  --concurrency 1 \
+  --timeout-s 180 \
+  --stream-debug-dir results/gpt-oss-stream-debug \
+  --output results/gpt-oss-120b-mxfp4-stream-debug.csv
+```
+
+Use `--capture-reasoning-as-output` only as a diagnostic to prove the server is streaming reasoning text. Do not use it for final visible-output TTFT/decode comparisons.
 
 ## Start Here: How To Run
 
@@ -384,13 +415,18 @@ Key columns:
 - `ttft_measured`
 - `decode_throughput_measured`
 - `measurement_quality`
+- `streamed_chunks`
+- `content_chunks`
+- `reasoning_chunks`
+- `reasoning_chars`
+- `debug_trace_path`
 - `status`
 - `error`
 
 ## Model Notes
 
 - `Nemotron-3-Nano-30B-A3B`: matrix rows include BF16, FP8, and NVFP4 self-hosted profiles.
-- `openai/gpt-oss-120b`: matrix rows include MXFP4 with no reasoning instruction by default.
+- `openai/gpt-oss-120b`: matrix rows include MXFP4. The example row uses `api_reasoning_effort=low`, `force_visible_output=true`, `measurement_mode=lenient`, and `stream_debug_dir=stream-debug` so missing visible-content metrics can be debugged instead of treated as model failure.
 - GPT-OSS requires the harmony response format. OpenAI-compatible runtimes such as vLLM should apply the chat format for `/v1/chat/completions`.
 
 References:
@@ -399,3 +435,5 @@ References:
 - OpenAI GPT-OSS announcement: https://openai.com/index/introducing-gpt-oss
 - GPT-OSS 120B Hugging Face model card: https://huggingface.co/openai/gpt-oss-120b
 - OpenAI harmony response format: https://cookbook.openai.com/article/harmony
+- NVIDIA GPT-OSS 120B NIM API reference: https://docs.api.nvidia.com/nim/reference/openai-gpt-oss-120b-infer
+- vLLM reasoning outputs: https://docs.vllm.ai/features/reasoning_outputs.html

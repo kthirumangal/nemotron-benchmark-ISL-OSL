@@ -44,6 +44,8 @@ class RunResult:
     enable_thinking: bool
     chat_template_kwargs_enabled: bool
     system_reasoning_effort: str
+    api_reasoning_effort: str
+    force_visible_output: bool
     input_chars: int
     estimated_input_tokens: int
     ttft_s: Optional[float]
@@ -65,6 +67,11 @@ class RunResult:
     ttft_measured: bool
     decode_throughput_measured: bool
     measurement_quality: str
+    streamed_chunks: int
+    content_chunks: int
+    reasoning_chunks: int
+    reasoning_chars: int
+    debug_trace_path: str
     status: str
     error: str
 
@@ -107,6 +114,21 @@ def apply_system_reasoning_effort(
     return [{"role": "system", "content": prefix.strip()}, *updated]
 
 
+def apply_force_visible_output(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    instruction = (
+        "Return the answer in final visible assistant content. Do not leave "
+        "message content empty. Do not emit only reasoning/analysis tokens. "
+        "For this benchmark, the first useful user-visible token must be "
+        "streamed as normal assistant content."
+    )
+    updated = [dict(message) for message in messages]
+    for message in updated:
+        if message["role"] == "system":
+            message["content"] = instruction + "\n\n" + message["content"]
+            return updated
+    return [{"role": "system", "content": instruction}, *updated]
+
+
 def estimate_tokens(text: str) -> int:
     # Conservative-enough planning estimate for Nemotron-style tokenizers.
     # Exact counts require the model tokenizer; this avoids adding dependencies.
@@ -141,17 +163,85 @@ def parse_sse_line(line: bytes) -> Optional[dict[str, Any]]:
         return None
 
 
-def extract_delta_text(chunk: dict[str, Any]) -> str:
+VISIBLE_TEXT_FIELDS = ("content", "text", "output_text")
+REASONING_TEXT_FIELDS = ("reasoning_content", "reasoning", "reasoning_text")
+
+
+def text_from_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(text_from_value(item) for item in value)
+    if isinstance(value, dict):
+        parts: list[str] = []
+        for key in ("text", "content", "value", "output_text"):
+            if key in value:
+                parts.append(text_from_value(value[key]))
+        return "".join(parts)
+    return ""
+
+
+def extract_stream_text(chunk: dict[str, Any]) -> tuple[str, str, list[str], list[str]]:
     choices = chunk.get("choices") or []
     if not choices:
-        return ""
-    delta = choices[0].get("delta") or {}
-    return delta.get("content") or ""
+        return "", "", [], []
+
+    visible_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    visible_fields: list[str] = []
+    reasoning_fields: list[str] = []
+
+    for choice in choices:
+        for container_name in ("delta", "message"):
+            container = choice.get(container_name) or {}
+            if not isinstance(container, dict):
+                continue
+            for field in VISIBLE_TEXT_FIELDS:
+                text = text_from_value(container.get(field))
+                if text:
+                    visible_parts.append(text)
+                    visible_fields.append(f"{container_name}.{field}")
+            for field in REASONING_TEXT_FIELDS:
+                text = text_from_value(container.get(field))
+                if text:
+                    reasoning_parts.append(text)
+                    reasoning_fields.append(f"{container_name}.{field}")
+
+        text = text_from_value(choice.get("text"))
+        if text:
+            visible_parts.append(text)
+            visible_fields.append("choice.text")
+
+    visible_text = "".join(visible_parts)
+    reasoning_text = "".join(reasoning_parts)
+
+    return visible_text, reasoning_text, visible_fields, reasoning_fields
 
 
 def extract_usage(chunk: dict[str, Any]) -> Optional[dict[str, Any]]:
     usage = chunk.get("usage")
     return usage if isinstance(usage, dict) else None
+
+
+def write_debug_trace(
+    *,
+    debug_dir: str,
+    prompt_file: str,
+    run_index: int,
+    records: list[dict[str, Any]],
+) -> str:
+    if not debug_dir:
+        return ""
+
+    path = pathlib.Path(debug_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    trace_path = path / f"{pathlib.Path(prompt_file).stem}-run{run_index}.jsonl"
+    with trace_path.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return str(trace_path)
 
 
 def call_streaming_chat(
@@ -169,6 +259,11 @@ def call_streaming_chat(
     enable_thinking: bool,
     omit_chat_template_kwargs: bool,
     system_reasoning_effort: str,
+    api_reasoning_effort: str,
+    force_visible_output: bool,
+    extra_body_json: str,
+    capture_reasoning_as_output: bool,
+    stream_debug_dir: str,
     measurement_mode: str,
     ttft_target_s: float,
     total_latency_target_s: float,
@@ -189,6 +284,54 @@ def call_streaming_chat(
     }
     if not omit_chat_template_kwargs:
         payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
+    if api_reasoning_effort:
+        payload["reasoning_effort"] = api_reasoning_effort
+    if extra_body_json:
+        try:
+            extra_body = json.loads(extra_body_json)
+        except json.JSONDecodeError as exc:
+            return error_result(
+                prompt_file,
+                run_index,
+                concurrency,
+                model,
+                precision_label,
+                max_tokens,
+                enable_thinking,
+                not omit_chat_template_kwargs,
+                system_reasoning_effort,
+                api_reasoning_effort,
+                force_visible_output,
+                measurement_mode,
+                input_chars,
+                estimated_input_tokens,
+                ttft_target_s,
+                total_latency_target_s,
+                throughput_target_tok_s,
+                f"Invalid --extra-body-json: {exc}",
+            )
+        if not isinstance(extra_body, dict):
+            return error_result(
+                prompt_file,
+                run_index,
+                concurrency,
+                model,
+                precision_label,
+                max_tokens,
+                enable_thinking,
+                not omit_chat_template_kwargs,
+                system_reasoning_effort,
+                api_reasoning_effort,
+                force_visible_output,
+                measurement_mode,
+                input_chars,
+                estimated_input_tokens,
+                ttft_target_s,
+                total_latency_target_s,
+                throughput_target_tok_s,
+                "--extra-body-json must decode to a JSON object.",
+            )
+        payload.update(extra_body)
 
     url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {
@@ -206,8 +349,14 @@ def call_streaming_chat(
     )
 
     output_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    debug_records: list[dict[str, Any]] = []
     ttft_s: Optional[float] = None
     usage: Optional[dict[str, Any]] = None
+    streamed_chunks = 0
+    content_chunks = 0
+    reasoning_chunks = 0
+    used_reasoning_as_output = False
     start = time.perf_counter()
 
     try:
@@ -220,15 +369,50 @@ def call_streaming_chat(
                 if chunk.get("done"):
                     break
 
+                streamed_chunks += 1
                 usage = extract_usage(chunk) or usage
-                text = extract_delta_text(chunk)
-                if text:
+                visible_text, reasoning_text, visible_fields, reasoning_fields = (
+                    extract_stream_text(chunk)
+                )
+                timing_text = visible_text
+                timing_source = "visible" if visible_text else ""
+                if capture_reasoning_as_output and not visible_text and reasoning_text:
+                    timing_text = reasoning_text
+                    timing_source = "reasoning"
+                    used_reasoning_as_output = True
+                if timing_text:
                     if ttft_s is None:
                         ttft_s = now - start
-                    output_parts.append(text)
+                    output_parts.append(timing_text)
+                if visible_text:
+                    content_chunks += 1
+                if reasoning_text:
+                    reasoning_parts.append(reasoning_text)
+                    reasoning_chunks += 1
+                if stream_debug_dir:
+                    debug_records.append(
+                        {
+                            "t_rel_s": now - start,
+                            "visible_chars": len(visible_text),
+                            "reasoning_chars": len(reasoning_text),
+                            "timing_chars": len(timing_text),
+                            "timing_source": timing_source,
+                            "visible_fields": sorted(set(visible_fields)),
+                            "reasoning_fields": sorted(set(reasoning_fields)),
+                            "usage_present": extract_usage(chunk) is not None,
+                            "chunk": chunk,
+                        }
+                    )
 
         total_latency_s = time.perf_counter() - start
         output_text = "".join(output_parts)
+        reasoning_text = "".join(reasoning_parts)
+        debug_trace_path = write_debug_trace(
+            debug_dir=stream_debug_dir,
+            prompt_file=prompt_file,
+            run_index=run_index,
+            records=debug_records,
+        )
 
         if usage and usage.get("completion_tokens") is not None:
             output_tokens = int(usage["completion_tokens"])
@@ -249,6 +433,8 @@ def call_streaming_chat(
                 enable_thinking=enable_thinking,
                 chat_template_kwargs_enabled=not omit_chat_template_kwargs,
                 system_reasoning_effort=system_reasoning_effort,
+                api_reasoning_effort=api_reasoning_effort,
+                force_visible_output=force_visible_output,
                 input_chars=input_chars,
                 estimated_input_tokens=estimated_input_tokens,
                 ttft_s=None,
@@ -271,7 +457,16 @@ def call_streaming_chat(
                 visible_output_captured=False,
                 ttft_measured=False,
                 decode_throughput_measured=False,
-                measurement_quality="usage_only_no_visible_output",
+                measurement_quality=(
+                    "reasoning_only_no_visible_output"
+                    if reasoning_text
+                    else "usage_only_no_visible_output"
+                ),
+                streamed_chunks=streamed_chunks,
+                content_chunks=content_chunks,
+                reasoning_chunks=reasoning_chunks,
+                reasoning_chars=len(reasoning_text),
+                debug_trace_path=debug_trace_path,
                 status="ok" if is_lenient else "error",
                 error="" if is_lenient else (
                     "No streamed visible content captured. The endpoint may have "
@@ -297,6 +492,8 @@ def call_streaming_chat(
                 enable_thinking=enable_thinking,
                 chat_template_kwargs_enabled=not omit_chat_template_kwargs,
                 system_reasoning_effort=system_reasoning_effort,
+                api_reasoning_effort=api_reasoning_effort,
+                force_visible_output=force_visible_output,
                 input_chars=input_chars,
                 estimated_input_tokens=estimated_input_tokens,
                 ttft_s=ttft_s,
@@ -316,10 +513,15 @@ def call_streaming_chat(
                 meets_targets=False,
                 output_chars=len(output_text),
                 measurement_mode=measurement_mode,
-                visible_output_captured=bool(output_text),
+                visible_output_captured=content_chunks > 0,
                 ttft_measured=ttft_s is not None,
                 decode_throughput_measured=False,
                 measurement_quality="missing_decode_throughput",
+                streamed_chunks=streamed_chunks,
+                content_chunks=content_chunks,
+                reasoning_chunks=reasoning_chunks,
+                reasoning_chars=len(reasoning_text),
+                debug_trace_path=debug_trace_path,
                 status="ok" if is_lenient else "error",
                 error=(
                     ""
@@ -346,6 +548,8 @@ def call_streaming_chat(
             enable_thinking=enable_thinking,
             chat_template_kwargs_enabled=not omit_chat_template_kwargs,
             system_reasoning_effort=system_reasoning_effort,
+            api_reasoning_effort=api_reasoning_effort,
+            force_visible_output=force_visible_output,
             input_chars=input_chars,
             estimated_input_tokens=estimated_input_tokens,
             ttft_s=ttft_s,
@@ -363,10 +567,19 @@ def call_streaming_chat(
             meets_targets=ttft_pass and total_latency_pass and throughput_pass,
             output_chars=len(output_text),
             measurement_mode=measurement_mode,
-            visible_output_captured=True,
+            visible_output_captured=content_chunks > 0,
             ttft_measured=True,
             decode_throughput_measured=True,
-            measurement_quality="complete",
+            measurement_quality=(
+                "complete_reasoning_as_output"
+                if used_reasoning_as_output
+                else "complete"
+            ),
+            streamed_chunks=streamed_chunks,
+            content_chunks=content_chunks,
+            reasoning_chunks=reasoning_chunks,
+            reasoning_chars=len(reasoning_text),
+            debug_trace_path=debug_trace_path,
             status="ok",
             error="",
         )
@@ -386,6 +599,8 @@ def call_streaming_chat(
             enable_thinking,
             not omit_chat_template_kwargs,
             system_reasoning_effort,
+            api_reasoning_effort,
+            force_visible_output,
             measurement_mode,
             input_chars,
             estimated_input_tokens,
@@ -405,6 +620,8 @@ def call_streaming_chat(
             enable_thinking,
             not omit_chat_template_kwargs,
             system_reasoning_effort,
+            api_reasoning_effort,
+            force_visible_output,
             measurement_mode,
             input_chars,
             estimated_input_tokens,
@@ -425,6 +642,8 @@ def error_result(
     enable_thinking: bool,
     chat_template_kwargs_enabled: bool,
     system_reasoning_effort: str,
+    api_reasoning_effort: str,
+    force_visible_output: bool,
     measurement_mode: str,
     input_chars: int,
     estimated_input_tokens: int,
@@ -443,6 +662,8 @@ def error_result(
         enable_thinking=enable_thinking,
         chat_template_kwargs_enabled=chat_template_kwargs_enabled,
         system_reasoning_effort=system_reasoning_effort,
+        api_reasoning_effort=api_reasoning_effort,
+        force_visible_output=force_visible_output,
         input_chars=input_chars,
         estimated_input_tokens=estimated_input_tokens,
         ttft_s=None,
@@ -464,6 +685,11 @@ def error_result(
         ttft_measured=False,
         decode_throughput_measured=False,
         measurement_quality="request_error",
+        streamed_chunks=0,
+        content_chunks=0,
+        reasoning_chunks=0,
+        reasoning_chars=0,
+        debug_trace_path="",
         status="error",
         error=error,
     )
@@ -539,6 +765,16 @@ def print_summary(results: list[RunResult]) -> None:
         f" decode={len(decode_measured)}/{len(ok)}"
         f" complete={len(complete_measurement)}/{len(ok)}"
     )
+    streamed = [result for result in ok if result.streamed_chunks]
+    content = [result for result in ok if result.content_chunks]
+    reasoning = [result for result in ok if result.reasoning_chunks]
+    if streamed:
+        print(
+            f"{'Stream fields':16}"
+            f" content_chunks={len(content)}/{len(ok)}"
+            f" reasoning_chunks={len(reasoning)}/{len(ok)}"
+            f" streamed_chunks_total={sum(result.streamed_chunks for result in ok)}"
+        )
 
     meets_targets = [result for result in ok if result.meets_targets]
     print(
@@ -599,6 +835,48 @@ def parse_args() -> argparse.Namespace:
         help="Optionally prepend 'Reasoning: <effort>' to the system prompt, useful for GPT-OSS comparisons.",
     )
     parser.add_argument(
+        "--api-reasoning-effort",
+        choices=["", "low", "medium", "high"],
+        default="",
+        help=(
+            "Send a request-level reasoning_effort parameter. Use this for "
+            "GPT-OSS NIM/vLLM endpoints that support reasoning_effort directly."
+        ),
+    )
+    parser.add_argument(
+        "--force-visible-output",
+        action="store_true",
+        help=(
+            "Prepend a system instruction asking the model to stream final visible "
+            "assistant content instead of emitting only reasoning/analysis tokens."
+        ),
+    )
+    parser.add_argument(
+        "--extra-body-json",
+        default="",
+        help=(
+            "JSON object merged into the chat/completions request body. Use this "
+            "for provider-specific GPT-OSS serving parameters."
+        ),
+    )
+    parser.add_argument(
+        "--capture-reasoning-as-output",
+        action="store_true",
+        help=(
+            "Diagnostic mode only: if no visible content is present, count streamed "
+            "reasoning_content/reasoning text as output for timing. Do not use this "
+            "for final visible-output latency comparisons."
+        ),
+    )
+    parser.add_argument(
+        "--stream-debug-dir",
+        default="",
+        help=(
+            "Optional directory for per-run JSONL traces of streamed chunks, including "
+            "which fields carried visible or reasoning text."
+        ),
+    )
+    parser.add_argument(
         "--measurement-mode",
         choices=["strict", "lenient"],
         default="strict",
@@ -630,10 +908,13 @@ def main() -> int:
         print(f"No JSON prompts found in {prompt_dir}", file=sys.stderr)
         return 2
 
-    prompts = [
-        (path, apply_system_reasoning_effort(load_prompt(path), args.system_reasoning_effort))
-        for path in prompt_paths
-    ]
+    prompts = []
+    for path in prompt_paths:
+        messages = load_prompt(path)
+        messages = apply_system_reasoning_effort(messages, args.system_reasoning_effort)
+        if args.force_visible_output:
+            messages = apply_force_visible_output(messages)
+        prompts.append((path, messages))
     tasks = []
     for run_index in range(args.runs):
         for path, messages in prompts:
@@ -657,6 +938,11 @@ def main() -> int:
                 enable_thinking=args.enable_thinking,
                 omit_chat_template_kwargs=args.omit_chat_template_kwargs,
                 system_reasoning_effort=args.system_reasoning_effort,
+                api_reasoning_effort=args.api_reasoning_effort,
+                force_visible_output=args.force_visible_output,
+                extra_body_json=args.extra_body_json,
+                capture_reasoning_as_output=args.capture_reasoning_as_output,
+                stream_debug_dir=args.stream_debug_dir,
                 measurement_mode=args.measurement_mode,
                 ttft_target_s=args.ttft_target_s,
                 total_latency_target_s=args.total_latency_target_s,
