@@ -57,6 +57,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--summary-output", default="results/arco-by-prompt-summary.csv")
     parser.add_argument("--experiment-id", default="")
     parser.add_argument("--ngc-api-key-env", default="NGC_API_KEY")
+    parser.add_argument("--ngc-registry", default="nvcr.io")
+    parser.add_argument("--skip-docker-login", action="store_true")
     parser.add_argument("--benchmark-api-key-env", default="NVIDIA_API_KEY")
     parser.add_argument("--cache-root", default="")
     parser.add_argument("--container-prefix", default="arco-bench")
@@ -159,6 +161,21 @@ def run_cmd(
 
 def docker_available() -> bool:
     return shutil.which("docker") is not None
+
+
+def docker_login(registry: str, api_key: str) -> None:
+    print(f"+ docker login {registry} -u '$oauthtoken' --password-stdin")
+    proc = subprocess.run(
+        ["docker", "login", registry, "-u", "$oauthtoken", "--password-stdin"],
+        input=api_key + "\n",
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if proc.returncode != 0:
+        stderr = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(f"Docker login failed for {registry}: {stderr}")
+    print(f"Docker login succeeded for {registry}.")
 
 
 def load_profiles(matrix_path: pathlib.Path, start_port: int) -> list[ModelProfile]:
@@ -742,6 +759,12 @@ def main() -> int:
     if not ngc_api_key:
         print(f"Missing {args.ngc_api_key_env}; NIM model downloads may fail.", file=sys.stderr)
         return 2
+    if not args.skip_docker_login:
+        try:
+            docker_login(args.ngc_registry, ngc_api_key)
+        except Exception as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
 
     failures = 0
     for profile in profiles:
