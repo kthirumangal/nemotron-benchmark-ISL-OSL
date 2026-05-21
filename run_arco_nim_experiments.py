@@ -149,7 +149,7 @@ def run_cmd(
     timeout: Optional[int] = None,
     capture: bool = True,
 ) -> subprocess.CompletedProcess[str]:
-    print("+ " + " ".join(shlex.quote(part) for part in cmd))
+    print("+ " + " ".join(shlex.quote(part) for part in redact_command(cmd)))
     return subprocess.run(
         cmd,
         check=check,
@@ -157,6 +157,25 @@ def run_cmd(
         capture_output=capture,
         text=True,
     )
+
+
+def redact_command(cmd: list[str]) -> list[str]:
+    redacted: list[str] = []
+    redact_next = False
+    for part in cmd:
+        if redact_next:
+            if part.startswith("NGC_API_KEY="):
+                redacted.append("NGC_API_KEY=<redacted>")
+            elif part.startswith("NVIDIA_API_KEY="):
+                redacted.append("NVIDIA_API_KEY=<redacted>")
+            else:
+                redacted.append(part)
+            redact_next = False
+            continue
+        redacted.append(part)
+        if part in {"-e", "--env"}:
+            redact_next = True
+    return redacted
 
 
 def docker_available() -> bool:
@@ -382,6 +401,9 @@ def start_container(
 ) -> str:
     docker_rm(container_name)
     cache_dir.mkdir(parents=True, exist_ok=True)
+    # NIM containers may run as a non-root user. The orchestrator creates the
+    # host bind-mount path, so make it writable before mounting it as /opt/nim/.cache.
+    cache_dir.chmod(0o777)
 
     env_pairs = {
         "NGC_API_KEY": ngc_api_key,
