@@ -55,6 +55,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--arco-repo", required=True)
     parser.add_argument("--output", default="results/arco-all-experiments.csv")
     parser.add_argument("--summary-output", default="results/arco-by-prompt-summary.csv")
+    parser.add_argument("--category-summary-output", default="results/arco-category-summary.csv")
+    parser.add_argument("--model-summary-output", default="results/arco-model-summary.csv")
     parser.add_argument("--experiment-id", default="")
     parser.add_argument("--ngc-api-key-env", default="NGC_API_KEY")
     parser.add_argument("--ngc-registry", default="nvcr.io")
@@ -663,6 +665,142 @@ def summarize_combined_csv(raw_csv: pathlib.Path, summary_csv: pathlib.Path) -> 
     print(f"Wrote summary sheet: {summary_csv} ({len(summary_rows)} rows)")
 
 
+ROLLUP_FIELDNAMES = [
+    "experiment_id",
+    "deployment_label",
+    "model",
+    "precision_label",
+    "requested_precision_label",
+    "detected_precision_label",
+    "gpu_count",
+    "gpu_names",
+    "gpu_memory_total_mb",
+    "category",
+    "completed_runs",
+    "error_runs",
+    "prompt_count",
+    "accuracy_pass_rate",
+    "target_pass_rate",
+    "p50_accuracy_score",
+    "p90_accuracy_score",
+    "p50_ttft_s",
+    "p90_ttft_s",
+    "p50_total_latency_s",
+    "p90_total_latency_s",
+    "p50_decode_tok_s",
+    "p90_decode_tok_s",
+    "p50_e2e_tok_s",
+    "p90_e2e_tok_s",
+    "median_output_tokens",
+    "visible_output_rate",
+    "ttft_measured_rate",
+    "decode_measured_rate",
+]
+
+
+def summarize_rollup_csv(
+    raw_csv: pathlib.Path,
+    summary_csv: pathlib.Path,
+    *,
+    include_category: bool,
+) -> None:
+    if not raw_csv.exists():
+        return
+    with raw_csv.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+
+    group_fields = [
+        "experiment_id",
+        "deployment_label",
+        "model",
+        "precision_label",
+        "requested_precision_label",
+        "detected_precision_label",
+        "gpu_count",
+        "gpu_names",
+        "gpu_memory_total_mb",
+    ]
+    if include_category:
+        group_fields.append("category")
+
+    groups: dict[tuple[str, ...], list[dict[str, str]]] = {}
+    for row in rows:
+        if row.get("category") == "startup":
+            continue
+        key = tuple(row.get(field, "") for field in group_fields)
+        groups.setdefault(key, []).append(row)
+
+    summary_rows: list[dict[str, Any]] = []
+    for key, group_rows in sorted(groups.items()):
+        base = dict(zip(group_fields, key))
+        if not include_category:
+            base["category"] = "ALL"
+        ok_rows = [row for row in group_rows if row.get("status") == "ok"]
+        error_rows = [row for row in group_rows if row.get("status") != "ok"]
+        prompt_count = len(
+            {
+                (row.get("category", ""), row.get("prompt_description", ""))
+                for row in group_rows
+            }
+        )
+
+        def series(field: str) -> list[float]:
+            return [
+                parsed
+                for row in ok_rows
+                if (parsed := as_float(row.get(field))) is not None
+            ]
+
+        def rate(field: str) -> str:
+            if not group_rows:
+                return ""
+            passed = sum(1 for row in group_rows if truthy(row.get(field, "")))
+            return fmt_summary(passed / len(group_rows))
+
+        summary_rows.append(
+            {
+                **base,
+                "completed_runs": len(ok_rows),
+                "error_runs": len(error_rows),
+                "prompt_count": prompt_count,
+                "accuracy_pass_rate": rate("accuracy_pass"),
+                "target_pass_rate": rate("meets_all_targets"),
+                "p50_accuracy_score": fmt_summary(percentile(series("accuracy_score"), 0.50)),
+                "p90_accuracy_score": fmt_summary(percentile(series("accuracy_score"), 0.90)),
+                "p50_ttft_s": fmt_summary(percentile(series("ttft_s"), 0.50)),
+                "p90_ttft_s": fmt_summary(percentile(series("ttft_s"), 0.90)),
+                "p50_total_latency_s": fmt_summary(percentile(series("total_latency_s"), 0.50)),
+                "p90_total_latency_s": fmt_summary(percentile(series("total_latency_s"), 0.90)),
+                "p50_decode_tok_s": fmt_summary(percentile(series("decode_tokens_per_s"), 0.50)),
+                "p90_decode_tok_s": fmt_summary(percentile(series("decode_tokens_per_s"), 0.90)),
+                "p50_e2e_tok_s": fmt_summary(percentile(series("e2e_tokens_per_s"), 0.50)),
+                "p90_e2e_tok_s": fmt_summary(percentile(series("e2e_tokens_per_s"), 0.90)),
+                "median_output_tokens": fmt_summary(percentile(series("output_tokens"), 0.50)),
+                "visible_output_rate": rate("visible_output_captured"),
+                "ttft_measured_rate": rate("ttft_measured"),
+                "decode_measured_rate": rate("decode_throughput_measured"),
+            }
+        )
+
+    summary_csv.parent.mkdir(parents=True, exist_ok=True)
+    with summary_csv.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=ROLLUP_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(summary_rows)
+    print(f"Wrote rollup sheet: {summary_csv} ({len(summary_rows)} rows)")
+
+
+def write_all_summaries(
+    raw_csv: pathlib.Path,
+    by_prompt_summary: pathlib.Path,
+    category_summary: pathlib.Path,
+    model_summary: pathlib.Path,
+) -> None:
+    summarize_combined_csv(raw_csv, by_prompt_summary)
+    summarize_rollup_csv(raw_csv, category_summary, include_category=True)
+    summarize_rollup_csv(raw_csv, model_summary, include_category=False)
+
+
 def run_benchmark(
     *,
     args: argparse.Namespace,
@@ -743,6 +881,12 @@ def main() -> int:
     summary_output_path = pathlib.Path(args.summary_output)
     if not summary_output_path.is_absolute():
         summary_output_path = repo_dir / summary_output_path
+    category_summary_output_path = pathlib.Path(args.category_summary_output)
+    if not category_summary_output_path.is_absolute():
+        category_summary_output_path = repo_dir / category_summary_output_path
+    model_summary_output_path = pathlib.Path(args.model_summary_output)
+    if not model_summary_output_path.is_absolute():
+        model_summary_output_path = repo_dir / model_summary_output_path
     arco_repo = pathlib.Path(args.arco_repo).expanduser().resolve()
     args.arco_repo = str(arco_repo)
 
@@ -769,7 +913,9 @@ def main() -> int:
     print(f"GPU count:  {gpu_count}")
     print(f"Cache root: {cache_root}")
     print(f"Output:     {output_path}")
-    print(f"Summary:    {summary_output_path}")
+    print(f"By prompt:  {summary_output_path}")
+    print(f"By category:{category_summary_output_path}")
+    print(f"By model:   {model_summary_output_path}")
 
     if args.dry_run:
         for profile in profiles:
@@ -876,7 +1022,12 @@ def main() -> int:
                 print(f"Benchmark failed for {profile.label} with exit code {rc}.")
                 if not args.continue_on_error:
                     return rc
-            summarize_combined_csv(output_path, summary_output_path)
+            write_all_summaries(
+                output_path,
+                summary_output_path,
+                category_summary_output_path,
+                model_summary_output_path,
+            )
         except Exception as exc:
             failures += 1
             print(f"Profile failed: {profile.label}: {exc}", file=sys.stderr)
@@ -889,7 +1040,12 @@ def main() -> int:
             )
             if not args.continue_on_error:
                 return 1
-            summarize_combined_csv(output_path, summary_output_path)
+            write_all_summaries(
+                output_path,
+                summary_output_path,
+                category_summary_output_path,
+                model_summary_output_path,
+            )
         finally:
             cleanup_after_profile(
                 args=args,
@@ -900,9 +1056,16 @@ def main() -> int:
             )
 
     print()
-    summarize_combined_csv(output_path, summary_output_path)
+    write_all_summaries(
+        output_path,
+        summary_output_path,
+        category_summary_output_path,
+        model_summary_output_path,
+    )
     print(f"Done. Combined CSV: {output_path}")
-    print(f"Summary CSV:       {summary_output_path}")
+    print(f"By-prompt CSV:     {summary_output_path}")
+    print(f"Category CSV:      {category_summary_output_path}")
+    print(f"Model CSV:         {model_summary_output_path}")
     return 0 if failures == 0 else 1
 
 
