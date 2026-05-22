@@ -139,19 +139,19 @@ Removing NIM cache to reclaim disk
 Removing Docker image to reclaim disk
 ```
 
-## 4x A10G: GPT-OSS MXFP4 And Nano BF16
+## 4x A10G: GPT-OSS MXFP4 And Nano FP8
 
 Use this matrix when you only want to compare:
 
 ```text
 GPT-OSS 120B MXFP4
-NIM Nano 30B BF16
+NIM Nano 30B FP8
 ```
 
 The matrix file is:
 
 ```text
-arco_nim_models.a10g-gptoss-mxfp4-nano-bf16.csv
+arco_nim_models.a10g-gptoss-mxfp4-nano-fp8.csv
 ```
 
 It keeps `tensor_parallel_size=auto`, so the orchestrator detects the 4 A10Gs and resolves matching TP4 NIM profiles automatically. The profile resolver still records a clear startup row and continues if a requested profile is not runnable on the current hardware.
@@ -171,11 +171,11 @@ docker run --rm \
   -v "$PWD/results:/results" \
   arco-nim-orchestrator \
   --arco-repo /arco \
-  --matrix /bench/arco_nim_models.a10g-gptoss-mxfp4-nano-bf16.csv \
-  --output /results/arco-a10g-gptoss-mxfp4-nano-bf16-all.csv \
-  --summary-output /results/arco-a10g-gptoss-mxfp4-nano-bf16-by-prompt.csv \
-  --category-summary-output /results/arco-a10g-gptoss-mxfp4-nano-bf16-by-category.csv \
-  --model-summary-output /results/arco-a10g-gptoss-mxfp4-nano-bf16-by-model.csv \
+  --matrix /bench/arco_nim_models.a10g-gptoss-mxfp4-nano-fp8.csv \
+  --output /results/arco-a10g-gptoss-mxfp4-nano-fp8-all.csv \
+  --summary-output /results/arco-a10g-gptoss-mxfp4-nano-fp8-by-prompt.csv \
+  --category-summary-output /results/arco-a10g-gptoss-mxfp4-nano-fp8-by-category.csv \
+  --model-summary-output /results/arco-a10g-gptoss-mxfp4-nano-fp8-by-model.csv \
   --cache-root "$HOME/nim-cache" \
   --runs 3 \
   --concurrency 1 \

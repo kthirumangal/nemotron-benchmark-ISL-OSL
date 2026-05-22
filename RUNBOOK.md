@@ -73,18 +73,18 @@ results/arco-category-summary.csv
 results/arco-model-summary.csv
 ```
 
-## 4x A10G Matrix: GPT-OSS MXFP4 And Nano BF16
+## 4x A10G Matrix: GPT-OSS MXFP4 And Nano FP8
 
 For the focused 4x A10G run, use:
 
 ```text
-arco_nim_models.a10g-gptoss-mxfp4-nano-bf16.csv
+arco_nim_models.a10g-gptoss-mxfp4-nano-fp8.csv
 ```
 
 This runs only:
 
 ```text
-NIM Nano 30B BF16
+NIM Nano 30B FP8
 GPT-OSS 120B MXFP4
 ```
 
@@ -93,10 +93,10 @@ The matrix uses `tensor_parallel_size=auto`, so the orchestrator should detect f
 Expected output files for this run:
 
 ```text
-results/arco-a10g-gptoss-mxfp4-nano-bf16-all.csv
-results/arco-a10g-gptoss-mxfp4-nano-bf16-by-prompt.csv
-results/arco-a10g-gptoss-mxfp4-nano-bf16-by-category.csv
-results/arco-a10g-gptoss-mxfp4-nano-bf16-by-model.csv
+results/arco-a10g-gptoss-mxfp4-nano-fp8-all.csv
+results/arco-a10g-gptoss-mxfp4-nano-fp8-by-prompt.csv
+results/arco-a10g-gptoss-mxfp4-nano-fp8-by-category.csv
+results/arco-a10g-gptoss-mxfp4-nano-fp8-by-model.csv
 ```
 
 ## Local Model Runs
