@@ -19,6 +19,86 @@ python3 benchmark_precision_matrix.py \
 
 The default `precision_matrix.example.csv` enables only the hosted API row.
 
+## Automated Arco NIM Run Checks
+
+For the Adobe AEM / Arco benchmark, prefer the Docker orchestrator. It pulls one NIM image at a time, resolves the exact runnable NIM profile for the requested precision, starts the server, waits for readiness, benchmarks, writes CSVs, then cleans up before the next profile.
+
+A healthy profile startup looks like this:
+
+```text
+Running profile: NIM Nano 30B FP8
++ docker buildx imagetools inspect --raw <nim image>
+Resolved linux/amd64 image: <image>@sha256:<digest>
++ docker pull <image>@sha256:<digest>
+Status: Downloaded newer image
+Resolving NIM model profile from image manifest...
++ docker run ... list-model-profiles
+Resolved NIM profile: <64-char-profile-id> (vllm-<precision>-tp<tp>-pp1-<memory>)
++ docker run -d --name arco-bench-...
+Waiting for <profile> on port <port>...
+```
+
+While the orchestrator is waiting, monitor from another terminal:
+
+```bash
+docker logs -f arco-bench-nim-nano-30b-fp8
+curl http://localhost:8002/v1/health/ready
+curl http://localhost:8002/v1/models
+```
+
+Profile container names and ports:
+
+```text
+arco-bench-nim-nano-30b-fp8     -> 8002
+arco-bench-nim-nano-30b-nvfp4   -> 8003
+arco-bench-gpt-oss-120b-mxfp4   -> 8004
+arco-bench-nim-super-120b-fp8   -> 8005
+arco-bench-nim-super-120b-nvfp4 -> 8006
+```
+
+Good readiness signs:
+
+```text
+Application startup complete
+/v1/models returns a model id
+/v1/health/ready returns ready
+```
+
+Expected output files:
+
+```text
+results/arco-all-experiments.csv
+results/arco-by-prompt-summary.csv
+results/arco-category-summary.csv
+results/arco-model-summary.csv
+```
+
+## 4x A10G Matrix: GPT-OSS MXFP4 And Nano BF16
+
+For the focused 4x A10G run, use:
+
+```text
+arco_nim_models.a10g-gptoss-mxfp4-nano-bf16.csv
+```
+
+This runs only:
+
+```text
+NIM Nano 30B BF16
+GPT-OSS 120B MXFP4
+```
+
+The matrix uses `tensor_parallel_size=auto`, so the orchestrator should detect four A10Gs and resolve TP4 profiles from each NIM image manifest. The A10G matrix uses `--max-num-seqs 4` because the benchmark runs concurrency 1 and this leaves more memory headroom than the general matrix.
+
+Expected output files for this run:
+
+```text
+results/arco-a10g-gptoss-mxfp4-nano-bf16-all.csv
+results/arco-a10g-gptoss-mxfp4-nano-bf16-by-prompt.csv
+results/arco-a10g-gptoss-mxfp4-nano-bf16-by-category.csv
+results/arco-a10g-gptoss-mxfp4-nano-bf16-by-model.csv
+```
+
 ## Local Model Runs
 
 Local rows require servers to be running first:
