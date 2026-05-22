@@ -139,6 +139,51 @@ Removing NIM cache to reclaim disk
 Removing Docker image to reclaim disk
 ```
 
+## 4x A10G: Clean Safe Run
+
+Use this matrix when you want the most reliable current A10G run:
+
+```text
+arco_nim_models.a10g-clean-safe.csv
+```
+
+It runs:
+
+```text
+NIM Nano 30B BF16 Safe
+GPT-OSS 120B MXFP4 Safe
+```
+
+This matrix uses TP4, `--max-model-len 16384`, `--max-num-seqs 1`, and `--gpu-memory-utilization 0.90` to avoid the tight A10G memory failures seen with 32K context. The Arco prompts observed in the benchmark fit within this 16K serving context.
+
+Run it with:
+
+```bash
+docker run --rm \
+  --name arco-nim-orchestrator-run \
+  --network host \
+  --gpus all \
+  -e PYTHONUNBUFFERED=1 \
+  -e NGC_API_KEY="$NGC_API_KEY" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/nim-cache:$HOME/nim-cache" \
+  -v "$HOME/aem-growth-arco-benchmark:/arco:ro" \
+  -v "$PWD/results:/results" \
+  arco-nim-orchestrator \
+  --arco-repo /arco \
+  --matrix /bench/arco_nim_models.a10g-clean-safe.csv \
+  --output /results/arco-a10g-clean-safe-all.csv \
+  --summary-output /results/arco-a10g-clean-safe-by-prompt.csv \
+  --category-summary-output /results/arco-a10g-clean-safe-by-category.csv \
+  --model-summary-output /results/arco-a10g-clean-safe-by-model.csv \
+  --cache-root "$HOME/nim-cache" \
+  --gpu-count 4 \
+  --keep-model-cache \
+  --runs 3 \
+  --concurrency 1 \
+  --continue-on-error
+```
+
 ## 4x A10G: GPT-OSS MXFP4 And Nano FP8
 
 Use this matrix when you only want to compare:

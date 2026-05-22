@@ -1,0 +1,3 @@
+enabled,label,image,precision_label,served_model_id,port,tensor_parallel_size,passthrough_args,cache_dir,extra_env_json,benchmark_extra_args
+true,NIM Nano 30B BF16 Safe,nvcr.io/nim/nvidia/nemotron-3-nano:latest,BF16,auto,8002,4,--max-model-len 16384 --max-num-seqs 1 --gpu-memory-utilization 0.90,nim-nano-30b-bf16-safe,,""
+true,GPT-OSS 120B MXFP4 Safe,nvcr.io/nim/openai/gpt-oss-120b:latest,MXFP4,auto,8004,4,--max-model-len 16384 --max-num-seqs 1 --gpu-memory-utilization 0.90,gpt-oss-120b-mxfp4-a10g-safe,,"--omit-chat-template-kwargs --api-reasoning-effort low --force-visible-output --measurement-mode lenient"

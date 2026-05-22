@@ -73,6 +73,32 @@ results/arco-category-summary.csv
 results/arco-model-summary.csv
 ```
 
+## 4x A10G Clean Safe Matrix
+
+For the most reliable 4x A10G run with current NIM images, use:
+
+```text
+arco_nim_models.a10g-clean-safe.csv
+```
+
+This runs only:
+
+```text
+NIM Nano 30B BF16 Safe
+GPT-OSS 120B MXFP4 Safe
+```
+
+The matrix uses TP4, `--max-model-len 16384`, `--max-num-seqs 1`, and `--gpu-memory-utilization 0.90`. This is intentionally more conservative than the general 32K matrix because 4x A10G has very little BF16 headroom.
+
+Expected output files for this run:
+
+```text
+results/arco-a10g-clean-safe-all.csv
+results/arco-a10g-clean-safe-by-prompt.csv
+results/arco-a10g-clean-safe-by-category.csv
+results/arco-a10g-clean-safe-by-model.csv
+```
+
 ## 4x A10G Matrix: GPT-OSS MXFP4 And Nano FP8
 
 For the focused 4x A10G run, use:
