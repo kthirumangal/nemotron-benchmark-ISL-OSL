@@ -4,12 +4,88 @@ Brev may open directly into a notebook environment. You can use either terminal 
 
 ## Read This First
 
-The benchmark does not start local models for you.
+There are two benchmark paths in this repo.
 
-It has two modes:
+1. The legacy ISL/OSL precision matrix does not start local models for you.
+2. The Arco NIM orchestrator does start NIM containers for you, waits for readiness, benchmarks, writes CSVs, then cleans up before the next profile.
 
-1. Hosted NVIDIA API: runs immediately after `NVIDIA_API_KEY` is set.
-2. Local/self-hosted models: requires you to start an OpenAI-compatible server first.
+For the Adobe AEM / Arco benchmark, use the automated Arco NIM orchestrator.
+
+## Automated Arco NIM Run
+
+The default Arco model matrix runs five profiles sequentially:
+
+```text
+NIM Nano 30B FP8
+NIM Nano 30B NVFP4
+GPT-OSS 120B MXFP4
+NIM Super 120B FP8
+NIM Super 120B NVFP4
+```
+
+The matrix specifies the desired precision, not a hardcoded manifest profile ID. For each NIM image, the orchestrator now lists the profiles from that exact container, selects the runnable non-LoRA profile matching the requested precision and detected tensor-parallel size, and injects the resolved 64-character `NIM_MODEL_PROFILE` automatically. If a requested precision cannot run on the current GPU, the orchestrator records a clear startup skip/error row and continues.
+
+Clone both repos:
+
+```bash
+cd ~
+git clone https://github.com/kthirumangal/nemotron-benchmark-ISL-OSL.git
+git clone https://github.com/aem-growth-adoption/aem-growth-arco-benchmark.git
+cd ~/nemotron-benchmark-ISL-OSL
+```
+
+Set your NGC key:
+
+```bash
+export NGC_API_KEY="your_ngc_key_here"
+```
+
+Build the orchestrator:
+
+```bash
+docker build --no-cache -t arco-nim-orchestrator .
+```
+
+Run the full matrix:
+
+```bash
+mkdir -p "$HOME/nim-cache" results
+
+docker run --rm \
+  --name arco-nim-orchestrator-run \
+  --network host \
+  --gpus all \
+  -e PYTHONUNBUFFERED=1 \
+  -e NGC_API_KEY="$NGC_API_KEY" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/nim-cache:$HOME/nim-cache" \
+  -v "$HOME/aem-growth-arco-benchmark:/arco:ro" \
+  -v "$PWD/results:/results" \
+  arco-nim-orchestrator \
+  --arco-repo /arco \
+  --matrix /bench/arco_nim_models.example.csv \
+  --output /results/arco-all-experiments.csv \
+  --summary-output /results/arco-by-prompt-summary.csv \
+  --category-summary-output /results/arco-category-summary.csv \
+  --model-summary-output /results/arco-model-summary.csv \
+  --cache-root "$HOME/nim-cache" \
+  --runs 3 \
+  --concurrency 1 \
+  --continue-on-error
+```
+
+Expected outputs:
+
+```text
+results/arco-all-experiments.csv
+results/arco-by-prompt-summary.csv
+results/arco-category-summary.csv
+results/arco-model-summary.csv
+```
+
+The orchestrator removes each NIM container, image, and per-profile cache after that profile unless you pass `--keep-images` or `--keep-model-cache`.
+
+## Legacy ISL/OSL Precision Matrix
 
 The local rows in `precision_matrix.example.csv` are just URLs:
 

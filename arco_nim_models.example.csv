@@ -1,4 +1,6 @@
 enabled,label,image,precision_label,served_model_id,port,tensor_parallel_size,passthrough_args,cache_dir,extra_env_json,benchmark_extra_args
-true,NIM Nano 30B,nvcr.io/nim/nvidia/nemotron-3-nano:latest,auto,auto,8002,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,""
-true,GPT-OSS 120B,nvcr.io/nim/openai/gpt-oss-120b:latest,auto,auto,8004,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,"--omit-chat-template-kwargs --api-reasoning-effort low --force-visible-output --measurement-mode lenient"
-true,NIM Super 120B,nvcr.io/nim/nvidia/nemotron-3-super-120b-a12b:latest,auto,auto,8003,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,""
+true,NIM Nano 30B FP8,nvcr.io/nim/nvidia/nemotron-3-nano:latest,FP8,auto,8002,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,""
+true,NIM Nano 30B NVFP4,nvcr.io/nim/nvidia/nemotron-3-nano:latest,NVFP4,auto,8003,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,""
+true,GPT-OSS 120B MXFP4,nvcr.io/nim/openai/gpt-oss-120b:latest,MXFP4,auto,8004,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,"--omit-chat-template-kwargs --api-reasoning-effort low --force-visible-output --measurement-mode lenient"
+true,NIM Super 120B FP8,nvcr.io/nim/nvidia/nemotron-3-super-120b-a12b:latest,FP8,auto,8005,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,""
+true,NIM Super 120B NVFP4,nvcr.io/nim/nvidia/nemotron-3-super-120b-a12b:latest,NVFP4,auto,8006,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,""

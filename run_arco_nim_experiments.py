@@ -47,6 +47,14 @@ class ModelProfile:
     benchmark_extra_args: str
 
 
+@dataclass(frozen=True)
+class NimModelProfile:
+    profile_id: str
+    description: str
+    section: str
+    required_gb_per_gpu: str
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Pull/run NIM containers one at a time and benchmark Arco prompts."
@@ -98,6 +106,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--append", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
+    parser.add_argument(
+        "--auto-resolve-nim-profile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "List NIM model profiles from the pulled image and select the exact "
+            "profile ID matching precision_label and tensor_parallel_size."
+        ),
+    )
     parser.add_argument("--resolve-amd64-digest", action="store_true", default=True)
     parser.add_argument(
         "--no-resolve-amd64-digest",
@@ -245,6 +262,14 @@ def detect_gpu_count(override: str) -> str:
     return str(count or 1)
 
 
+def parse_positive_int(value: str) -> Optional[int]:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 def default_cache_root() -> pathlib.Path:
     nvme = pathlib.Path("/opt/dlami/nvme")
     if nvme.exists() and os.access(nvme, os.W_OK):
@@ -285,8 +310,16 @@ def resolve_linux_amd64_digest(image: str) -> Optional[str]:
 
 
 def pull_image(image: str, resolve_amd64_digest: bool) -> str:
+    if resolve_amd64_digest:
+        resolved = resolve_linux_amd64_digest(image)
+        if resolved:
+            if resolved != image:
+                print(f"Resolved linux/amd64 image: {resolved}")
+            run_cmd(["docker", "pull", resolved], check=True, timeout=3600, capture=False)
+            return resolved
+
     try:
-        run_cmd(["docker", "pull", image], check=True, timeout=3600)
+        run_cmd(["docker", "pull", image], check=True, timeout=3600, capture=False)
         return image
     except subprocess.CalledProcessError as exc:
         combined = (exc.stdout or "") + "\n" + (exc.stderr or "")
@@ -296,8 +329,206 @@ def pull_image(image: str, resolve_amd64_digest: bool) -> str:
         resolved = resolve_linux_amd64_digest(image)
         if not resolved:
             raise
-        run_cmd(["docker", "pull", resolved], check=True, timeout=3600)
+        run_cmd(["docker", "pull", resolved], check=True, timeout=3600, capture=False)
         return resolved
+
+
+def list_nim_model_profiles(
+    *,
+    image_ref: str,
+    ngc_api_key: str,
+    gpus: str,
+) -> list[NimModelProfile]:
+    commands = [
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--runtime=nvidia",
+            "--gpus",
+            gpus,
+            "-e",
+            f"NGC_API_KEY={ngc_api_key}",
+            image_ref,
+            "list-model-profiles",
+        ],
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--runtime=nvidia",
+            "--gpus",
+            gpus,
+            "-e",
+            f"NGC_API_KEY={ngc_api_key}",
+            "--entrypoint",
+            "nim_list_model_profiles",
+            image_ref,
+        ],
+    ]
+    last_error = ""
+    for cmd in commands:
+        try:
+            proc = run_cmd(cmd, check=True, timeout=900, capture=True)
+        except Exception as exc:
+            last_error = str(exc)
+            continue
+        profiles = parse_nim_profile_output(proc.stdout)
+        if profiles:
+            return profiles
+        last_error = "profile list command produced no parsable profiles"
+    raise RuntimeError(f"Could not list NIM model profiles for {image_ref}: {last_error}")
+
+
+def parse_nim_profile_output(output: str) -> list[NimModelProfile]:
+    profiles: list[NimModelProfile] = []
+    section = ""
+    profile_re = re.compile(
+        r"^\s*-\s+([a-fA-F0-9]{64})\s+\(([^)]+)\)\s+\[requires\s+>=\s*([0-9.]+)\s+GB/gpu\]"
+    )
+    for line in output.splitlines():
+        stripped = line.strip()
+        lowered = stripped.lower()
+        if stripped.startswith("- Compatible with system and runnable"):
+            section = "runnable"
+            continue
+        if stripped.startswith("- Compatible with system but low memory"):
+            section = "low_memory"
+            continue
+        if stripped.startswith("- Incompatible with system"):
+            section = "incompatible"
+            continue
+        match = profile_re.match(line)
+        if not match:
+            continue
+        profile_id, description, required = match.groups()
+        profiles.append(
+            NimModelProfile(
+                profile_id=profile_id,
+                description=description,
+                section=section or "unknown",
+                required_gb_per_gpu=required,
+            )
+        )
+    return profiles
+
+
+def profile_description_matches_request(
+    description: str,
+    *,
+    precision_label: str,
+    tensor_parallel_size: str,
+) -> bool:
+    precision = precision_label.strip().lower()
+    tp = parse_positive_int(tensor_parallel_size)
+    if not precision or precision == "auto" or not tp:
+        return False
+    prefix = f"vllm-{precision}-tp{tp}-pp1"
+    return description == prefix or description.startswith(prefix + "-")
+
+
+def find_nim_profile(
+    profiles: list[NimModelProfile],
+    *,
+    requested_profile: str,
+    precision_label: str,
+    tensor_parallel_size: str,
+) -> Optional[NimModelProfile]:
+    non_lora = [
+        profile
+        for profile in profiles
+        if "feat_lora" not in profile.description.lower()
+    ]
+    preferred_sections = ("runnable", "low_memory", "incompatible", "unknown")
+
+    def sorted_candidates(candidates: list[NimModelProfile]) -> list[NimModelProfile]:
+        return sorted(
+            candidates,
+            key=lambda profile: preferred_sections.index(profile.section)
+            if profile.section in preferred_sections
+            else len(preferred_sections),
+        )
+
+    requested = requested_profile.strip()
+    if requested and requested.lower() not in {"auto", "default"}:
+        exact = [
+            profile
+            for profile in non_lora
+            if profile.profile_id == requested or profile.description == requested
+        ]
+        if exact:
+            return sorted_candidates(exact)[0]
+        prefix = [
+            profile
+            for profile in non_lora
+            if profile.description.startswith(requested + "-")
+        ]
+        if prefix:
+            return sorted_candidates(prefix)[0]
+
+    precision_tp = [
+        profile
+        for profile in non_lora
+        if profile_description_matches_request(
+            profile.description,
+            precision_label=precision_label,
+            tensor_parallel_size=tensor_parallel_size,
+        )
+    ]
+    if precision_tp:
+        return sorted_candidates(precision_tp)[0]
+    return None
+
+
+def resolve_nim_model_profile(
+    *,
+    args: argparse.Namespace,
+    profile: ModelProfile,
+    image_ref: str,
+    ngc_api_key: str,
+    tensor_parallel_size: str,
+) -> tuple[dict[str, str], Optional[str]]:
+    env = dict(profile.extra_env)
+    requested_profile = env.get("NIM_MODEL_PROFILE", "").strip()
+    if not args.auto_resolve_nim_profile:
+        return env, None
+    if profile.precision_label.strip().lower() in {"", "auto"} and not requested_profile:
+        return env, None
+
+    print("Resolving NIM model profile from image manifest...")
+    profiles = list_nim_model_profiles(
+        image_ref=image_ref,
+        ngc_api_key=ngc_api_key,
+        gpus=args.gpus,
+    )
+    resolved = find_nim_profile(
+        profiles,
+        requested_profile=requested_profile,
+        precision_label=profile.precision_label,
+        tensor_parallel_size=tensor_parallel_size,
+    )
+    if not resolved:
+        available = ", ".join(
+            f"{p.description} [{p.section}]" for p in profiles if "feat_lora" not in p.description.lower()
+        )
+        error = (
+            f"No NIM profile matched precision={profile.precision_label}, "
+            f"tensor_parallel_size={tensor_parallel_size}. Available profiles: {available}"
+        )
+        return env, error
+    if resolved.section != "runnable":
+        error = (
+            f"Resolved NIM profile {resolved.description} is marked {resolved.section} "
+            f"on this hardware, so it will not be launched."
+        )
+        return env, error
+    env["NIM_MODEL_PROFILE"] = resolved.profile_id
+    print(
+        "Resolved NIM profile: "
+        f"{resolved.profile_id} ({resolved.description}) "
+        f"[requires >={resolved.required_gb_per_gpu} GB/gpu]"
+    )
+    return env, None
 
 
 def docker_rm(container_name: str) -> None:
@@ -399,6 +630,7 @@ def start_container(
     cache_dir: pathlib.Path,
     ngc_api_key: str,
     tensor_parallel_size: str,
+    resolved_extra_env: dict[str, str],
     args: argparse.Namespace,
 ) -> str:
     docker_rm(container_name)
@@ -411,7 +643,7 @@ def start_container(
         "NGC_API_KEY": ngc_api_key,
         "NIM_TENSOR_PARALLEL_SIZE": tensor_parallel_size,
         "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
-        **profile.extra_env,
+        **resolved_extra_env,
     }
     if profile.passthrough_args:
         env_pairs["NIM_PASSTHROUGH_ARGS"] = profile.passthrough_args
@@ -536,6 +768,49 @@ def write_startup_failure_row(
         "config_file": "",
         "prompt_template_file": "",
         "prompt_description": "container startup",
+        "prompt_query": "",
+        "run_index": "",
+        "concurrency": args.concurrency,
+        "max_tokens": args.max_tokens,
+        "temperature": args.temperature,
+        "status": "error",
+        "error": error,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=benchmark_arco.FIELDNAMES)
+        if write_header:
+            writer.writeheader()
+        writer.writerow({field: row.get(field, "") for field in benchmark_arco.FIELDNAMES})
+
+
+def write_profile_skip_row(
+    *,
+    args: argparse.Namespace,
+    profile: ModelProfile,
+    output_path: pathlib.Path,
+    experiment_id: str,
+    error: str,
+    tensor_parallel_size: str,
+) -> None:
+    write_header = not output_path.exists() or output_path.stat().st_size == 0
+    gpu_metadata = current_gpu_metadata()
+    requested_precision = "" if profile.precision_label in {"", "auto"} else profile.precision_label
+    row = {
+        "experiment_id": experiment_id,
+        "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "host": os.uname().nodename,
+        "deployment_label": profile.label,
+        "model": profile.served_model_id,
+        "precision_label": profile.precision_label,
+        "requested_precision_label": requested_precision,
+        "detected_precision_label": "",
+        "base_url": f"http://localhost:{profile.port}/v1",
+        **gpu_metadata,
+        "category": "startup",
+        "config_file": "",
+        "prompt_template_file": "",
+        "prompt_description": f"profile skipped before container start (TP={tensor_parallel_size})",
         "prompt_query": "",
         "run_index": "",
         "concurrency": args.concurrency,
@@ -944,6 +1219,8 @@ def main() -> int:
         tensor_parallel_size = (
             gpu_count if profile.tensor_parallel_size in {"", "auto"} else profile.tensor_parallel_size
         )
+        detected_gpu_count = parse_positive_int(gpu_count)
+        requested_tp = parse_positive_int(tensor_parallel_size)
         cache_dir = (
             pathlib.Path(profile.cache_dir).expanduser()
             if profile.cache_dir
@@ -955,10 +1232,62 @@ def main() -> int:
         print(f"Running profile: {profile.label}")
         print("=" * 78)
 
+        if detected_gpu_count and requested_tp and requested_tp > detected_gpu_count:
+            failures += 1
+            error = (
+                f"Profile requires tensor_parallel_size={requested_tp}, "
+                f"but only {detected_gpu_count} GPU(s) were detected."
+            )
+            print(error)
+            write_profile_skip_row(
+                args=args,
+                profile=profile,
+                output_path=output_path,
+                experiment_id=experiment_id,
+                error=error,
+                tensor_parallel_size=tensor_parallel_size,
+            )
+            write_all_summaries(
+                output_path,
+                summary_output_path,
+                category_summary_output_path,
+                model_summary_output_path,
+            )
+            if not args.continue_on_error:
+                return 1
+            continue
+
         image_ref = profile.image
         try:
             if not args.skip_pull:
                 image_ref = pull_image(profile.image, args.resolve_amd64_digest)
+            resolved_extra_env, profile_resolution_error = resolve_nim_model_profile(
+                args=args,
+                profile=profile,
+                image_ref=image_ref,
+                ngc_api_key=ngc_api_key,
+                tensor_parallel_size=tensor_parallel_size,
+            )
+            if profile_resolution_error:
+                failures += 1
+                print(profile_resolution_error)
+                write_profile_skip_row(
+                    args=args,
+                    profile=profile,
+                    output_path=output_path,
+                    experiment_id=experiment_id,
+                    error=profile_resolution_error,
+                    tensor_parallel_size=tensor_parallel_size,
+                )
+                write_all_summaries(
+                    output_path,
+                    summary_output_path,
+                    category_summary_output_path,
+                    model_summary_output_path,
+                )
+                if not args.continue_on_error:
+                    return 1
+                continue
             start_container(
                 profile=profile,
                 image_ref=image_ref,
@@ -966,6 +1295,7 @@ def main() -> int:
                 cache_dir=cache_dir,
                 ngc_api_key=ngc_api_key,
                 tensor_parallel_size=tensor_parallel_size,
+                resolved_extra_env=resolved_extra_env,
                 args=args,
             )
 
