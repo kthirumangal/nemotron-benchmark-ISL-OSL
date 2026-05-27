@@ -227,6 +227,82 @@ docker run --rm \
   --continue-on-error
 ```
 
+## H100: Nano NVFP4
+
+Use this focused matrix to benchmark Nano NVFP4 on an H100:
+
+```text
+arco_nim_models.h100-nano-nvfp4.csv
+```
+
+Run it with:
+
+```bash
+docker run --rm \
+  --name arco-nim-orchestrator-run \
+  --network host \
+  --gpus all \
+  -e PYTHONUNBUFFERED=1 \
+  -e NGC_API_KEY="$NGC_API_KEY" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/nim-cache:$HOME/nim-cache" \
+  -v "$HOME/aem-growth-arco-benchmark:/arco:ro" \
+  -v "$PWD/results:/results" \
+  arco-nim-orchestrator \
+  --arco-repo /arco \
+  --matrix /bench/arco_nim_models.h100-nano-nvfp4.csv \
+  --output /results/arco-h100-nano-nvfp4-all.csv \
+  --summary-output /results/arco-h100-nano-nvfp4-by-prompt.csv \
+  --category-summary-output /results/arco-h100-nano-nvfp4-by-category.csv \
+  --model-summary-output /results/arco-h100-nano-nvfp4-by-model.csv \
+  --cache-root "$HOME/nim-cache" \
+  --runs 3 \
+  --concurrency 1 \
+  --continue-on-error
+```
+
+## H200: GPT-OSS Standard Vs Turbo Candidate
+
+Use this matrix to compare the current GPT-OSS 120B NIM against the candidate Turbo NIM image:
+
+```text
+arco_nim_models.h200-gptoss-standard-vs-turbo.csv
+```
+
+The Turbo candidate row uses:
+
+```text
+nvcr.io/nim/openai/gpt-oss-120b-turbo:1.0.0
+```
+
+If that image is not yet visible in your NGC account, the orchestrator records the pull/startup failure and still writes the summary CSVs.
+
+Run it with:
+
+```bash
+docker run --rm \
+  --name arco-nim-orchestrator-run \
+  --network host \
+  --gpus all \
+  -e PYTHONUNBUFFERED=1 \
+  -e NGC_API_KEY="$NGC_API_KEY" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/nim-cache:$HOME/nim-cache" \
+  -v "$HOME/aem-growth-arco-benchmark:/arco:ro" \
+  -v "$PWD/results:/results" \
+  arco-nim-orchestrator \
+  --arco-repo /arco \
+  --matrix /bench/arco_nim_models.h200-gptoss-standard-vs-turbo.csv \
+  --output /results/arco-h200-gptoss-standard-vs-turbo-all.csv \
+  --summary-output /results/arco-h200-gptoss-standard-vs-turbo-by-prompt.csv \
+  --category-summary-output /results/arco-h200-gptoss-standard-vs-turbo-by-category.csv \
+  --model-summary-output /results/arco-h200-gptoss-standard-vs-turbo-by-model.csv \
+  --cache-root "$HOME/nim-cache" \
+  --runs 3 \
+  --concurrency 1 \
+  --continue-on-error
+```
+
 ## Legacy ISL/OSL Precision Matrix
 
 The local rows in `precision_matrix.example.csv` are just URLs:

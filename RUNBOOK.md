@@ -125,6 +125,55 @@ results/arco-a10g-gptoss-mxfp4-nano-fp8-by-category.csv
 results/arco-a10g-gptoss-mxfp4-nano-fp8-by-model.csv
 ```
 
+## H100 Nano NVFP4 Matrix
+
+For a focused H100 Nano NVFP4 run, use:
+
+```text
+arco_nim_models.h100-nano-nvfp4.csv
+```
+
+Expected output files for this run:
+
+```text
+results/arco-h100-nano-nvfp4-all.csv
+results/arco-h100-nano-nvfp4-by-prompt.csv
+results/arco-h100-nano-nvfp4-by-category.csv
+results/arco-h100-nano-nvfp4-by-model.csv
+```
+
+## H200 GPT-OSS Standard Vs Turbo Candidate Matrix
+
+For a focused H200 GPT-OSS comparison, use:
+
+```text
+arco_nim_models.h200-gptoss-standard-vs-turbo.csv
+```
+
+This compares:
+
+```text
+GPT-OSS 120B MXFP4 H200
+GPT-OSS 120B Turbo Candidate H200
+```
+
+The Turbo candidate image is:
+
+```text
+nvcr.io/nim/openai/gpt-oss-120b-turbo:1.0.0
+```
+
+If the image is not yet released to your NGC account, the orchestrator records the pull/startup failure and continues.
+
+Expected output files for this run:
+
+```text
+results/arco-h200-gptoss-standard-vs-turbo-all.csv
+results/arco-h200-gptoss-standard-vs-turbo-by-prompt.csv
+results/arco-h200-gptoss-standard-vs-turbo-by-category.csv
+results/arco-h200-gptoss-standard-vs-turbo-by-model.csv
+```
+
 ## Local Model Runs
 
 Local rows require servers to be running first:

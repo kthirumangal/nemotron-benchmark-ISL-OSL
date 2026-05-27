@@ -1,0 +1,2 @@
+enabled,label,image,precision_label,served_model_id,port,tensor_parallel_size,passthrough_args,cache_dir,extra_env_json,benchmark_extra_args
+true,NIM Nano 30B NVFP4 H100,nvcr.io/nim/nvidia/nemotron-3-nano:latest,NVFP4,auto,8003,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,nim-nano-30b-nvfp4-h100,,""

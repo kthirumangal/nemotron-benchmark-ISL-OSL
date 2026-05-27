@@ -1,0 +1,3 @@
+enabled,label,image,precision_label,served_model_id,port,tensor_parallel_size,passthrough_args,cache_dir,extra_env_json,benchmark_extra_args
+true,GPT-OSS 120B MXFP4 H200,nvcr.io/nim/openai/gpt-oss-120b:latest,MXFP4,auto,8004,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,gpt-oss-120b-mxfp4-h200,,"--omit-chat-template-kwargs --api-reasoning-effort low --force-visible-output --measurement-mode lenient"
+true,GPT-OSS 120B Turbo Candidate H200,nvcr.io/nim/openai/gpt-oss-120b-turbo:1.0.0,auto,auto,8007,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,gpt-oss-120b-turbo-h200,,"--omit-chat-template-kwargs --api-reasoning-effort low --force-visible-output --measurement-mode lenient"
