@@ -1221,11 +1221,15 @@ def main() -> int:
         )
         detected_gpu_count = parse_positive_int(gpu_count)
         requested_tp = parse_positive_int(tensor_parallel_size)
-        cache_dir = (
-            pathlib.Path(profile.cache_dir).expanduser()
-            if profile.cache_dir
-            else cache_root / sanitize(profile.label).lower()
-        )
+        if profile.cache_dir:
+            requested_cache_dir = pathlib.Path(profile.cache_dir).expanduser()
+            cache_dir = (
+                requested_cache_dir
+                if requested_cache_dir.is_absolute()
+                else cache_root / requested_cache_dir
+            )
+        else:
+            cache_dir = cache_root / sanitize(profile.label).lower()
 
         print()
         print("=" * 78)
