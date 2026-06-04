@@ -71,8 +71,8 @@ def parse_args() -> argparse.Namespace:
         default=list(DEFAULT_CONFIGS),
         help="PromptFoo YAML configs to run, relative to --arco-repo.",
     )
-    parser.add_argument("--base-url", required=True, help="OpenAI-compatible /v1 base URL")
-    parser.add_argument("--model", required=True, help="Model ID exposed by /v1/models")
+    parser.add_argument("--base-url", default="", help="OpenAI-compatible /v1 base URL")
+    parser.add_argument("--model", default="", help="Model ID exposed by /v1/models")
     parser.add_argument("--deployment-label", default="", help="Human-readable deployment name")
     parser.add_argument("--precision-label", default="", help="Precision/profile label")
     parser.add_argument("--requested-precision-label", default="", help="Requested precision/profile label from the experiment matrix")
@@ -100,7 +100,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--extra-body-json", default="")
     parser.add_argument("--measurement-mode", choices=("strict", "lenient"), default="strict")
     parser.add_argument("--stream-debug-dir", default="")
-    parser.add_argument("--output", required=True, help="Combined CSV output path")
+    parser.add_argument("--output", default="", help="Combined CSV output path")
     parser.add_argument("--append", action="store_true", help="Append to existing CSV")
     parser.add_argument("--dry-run", action="store_true", help="Load cases but do not call endpoint")
     return parser.parse_args()
@@ -793,6 +793,16 @@ def main() -> int:
             count = sum(1 for case in cases if case.category == category)
             print(f"- {category}: {count} cases")
         return 0
+
+    if not args.base_url:
+        print("--base-url is required unless --dry-run is set.", file=sys.stderr)
+        return 2
+    if not args.model:
+        print("--model is required unless --dry-run is set.", file=sys.stderr)
+        return 2
+    if not args.output:
+        print("--output is required unless --dry-run is set.", file=sys.stderr)
+        return 2
 
     api_key = args.api_key or os.environ.get(args.api_key_env, "")
     if not api_key and not args.allow_missing_api_key:

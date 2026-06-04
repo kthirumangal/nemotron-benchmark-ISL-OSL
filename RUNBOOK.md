@@ -125,13 +125,20 @@ results/arco-a10g-gptoss-mxfp4-nano-fp8-by-category.csv
 results/arco-a10g-gptoss-mxfp4-nano-fp8-by-model.csv
 ```
 
-## H100 Nano NVFP4 Matrix
+## H100 Nano NVFP4 Profile Check
 
-For a focused H100 Nano NVFP4 run, use:
+For a focused H100 Nano NVFP4 profile check, use:
 
 ```text
 arco_nim_models.h100-nano-nvfp4.csv
 ```
+
+This matrix is intentionally a compatibility check. Recent
+`nemotron-3-nano:latest` manifests have marked Nano NVFP4 as incompatible on
+some H100 instances while FP8 and BF16 were runnable. If that happens, the
+orchestrator writes a startup skip/error row and continues. Treat successful
+H100 NVFP4 numbers as image/profile-specific and record the exact NIM image
+tag/digest and profile ID.
 
 Expected output files for this run:
 
@@ -163,7 +170,10 @@ The Turbo candidate image is:
 nvcr.io/nim/openai/gpt-oss-120b-turbo:1.0.0
 ```
 
-If the image is not yet released to your NGC account, the orchestrator records the pull/startup failure and continues.
+If the image is not yet released to your NGC account, or if you are testing a
+private NimCraft release candidate, update the matrix row with the exact
+`nvcr.io/...` image URI you were granted. The orchestrator records the
+pull/startup failure and continues.
 
 Expected output files for this run:
 

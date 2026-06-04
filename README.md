@@ -2,6 +2,24 @@
 
 This benchmark runs the `of1-testprompts` JSON chat prompts against OpenAI-compatible chat endpoints. The default model is NVIDIA `Nemotron-3-Nano-30B-A3B`, and the matrix runner also includes `openai/gpt-oss-120b`.
 
+## Adobe AEM / Arco Reproduction Path
+
+If you are reproducing the Adobe AEM / Arco benchmark on your own GPU
+infrastructure and traffic/prompt data, start with:
+
+```text
+BREV_QUICKSTART.md
+```
+
+That path uses the Docker-based Arco NIM orchestrator. It pulls one NIM image at
+a time, resolves the runnable NIM profile for the requested precision and GPU
+shape, waits for readiness, benchmarks the Arco prompt categories, writes raw
+plus by-prompt/by-category/by-model CSVs, and cleans up before moving to the
+next model.
+
+The legacy ISL/OSL matrix documented below is still available for direct
+OpenAI-compatible endpoint testing, but it does not launch NIM containers.
+
 It measures:
 
 - TTFT: request start to first streamed content

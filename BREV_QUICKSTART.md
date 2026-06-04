@@ -34,6 +34,22 @@ git clone https://github.com/aem-growth-adoption/aem-growth-arco-benchmark.git
 cd ~/nemotron-benchmark-ISL-OSL
 ```
 
+To reproduce with your own traffic or prompt data, keep the same PromptFoo-style
+layout as the Arco repo:
+
+```text
+classification.yaml
+reasoning.yaml
+recommender.yaml
+prompts/*.yaml
+```
+
+Each config should contain `prompts: [file://...]`, `tests`, optional
+`defaultTest.assert`, and per-test `vars` / `assert` entries. Then mount your
+repo at `/arco` or pass a different `--arco-repo` path. To benchmark different
+config names, pass `--configs your-config.yaml another-config.yaml` to the
+orchestrator command.
+
 Set your NGC key:
 
 ```bash
@@ -227,13 +243,20 @@ docker run --rm \
   --continue-on-error
 ```
 
-## H100: Nano NVFP4
+## H100: Nano NVFP4 Profile Check
 
-Use this focused matrix to benchmark Nano NVFP4 on an H100:
+Use this focused matrix only when you want to test whether the currently pulled
+Nano NIM exposes a runnable NVFP4 profile on your H100:
 
 ```text
 arco_nim_models.h100-nano-nvfp4.csv
 ```
+
+Recent `nemotron-3-nano:latest` manifests have marked Nano NVFP4 as
+incompatible on some H100 instances while FP8 and BF16 were runnable. The
+orchestrator will record a clear startup skip row if the NVFP4 profile is not
+runnable on the exact image/hardware combination. If someone shares H100 NVFP4
+numbers, ask for the exact NIM image tag/digest and profile ID used.
 
 Run it with:
 
@@ -275,7 +298,11 @@ The Turbo candidate row uses:
 nvcr.io/nim/openai/gpt-oss-120b-turbo:1.0.0
 ```
 
-If that image is not yet visible in your NGC account, the orchestrator records the pull/startup failure and still writes the summary CSVs.
+If that image is not yet visible in your NGC account, or if you are testing a
+private release-candidate image from NimCraft, update the matrix row with the
+exact `nvcr.io/...` image URI you were granted. The orchestrator records the
+pull/startup failure and still writes the summary CSVs when access or profile
+selection fails.
 
 Run it with:
 
