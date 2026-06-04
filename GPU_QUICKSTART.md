@@ -11,7 +11,7 @@ There are two benchmark paths in this repo.
 1. The legacy ISL/OSL precision matrix does not start local models for you.
 2. The Arco NIM orchestrator does start NIM containers for you, waits for readiness, benchmarks, writes CSVs, then cleans up before the next profile.
 
-For the Adobe AEM / Arco benchmark, use the automated Arco NIM orchestrator.
+For the AEM / Arco benchmark, use the automated Arco NIM orchestrator.
 
 ## Automated Arco NIM Run
 

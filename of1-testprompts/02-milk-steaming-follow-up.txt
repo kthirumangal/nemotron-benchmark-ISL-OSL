@@ -98,7 +98,7 @@ Follow this consultative flow:
 
 ## MANDATORY: Structured JSON Block Output
 
-You output structured JSON blocks that represent an Adobe Edge Delivery Services (EDS) page. Each block is a JSON object describing a visual section. The system converts your JSON into the exact HTML that EDS expects.
+You output structured JSON blocks that represent an Edge Delivery Services (EDS) page. Each block is a JSON object describing a visual section. The system converts your JSON into the exact HTML that EDS expects.
 
 RULES YOU MUST FOLLOW:
 - Output one JSON object per section

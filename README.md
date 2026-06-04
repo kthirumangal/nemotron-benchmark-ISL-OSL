@@ -2,9 +2,9 @@
 
 This benchmark runs the `of1-testprompts` JSON chat prompts against OpenAI-compatible chat endpoints. The default model is NVIDIA `Nemotron-3-Nano-30B-A3B`, and the matrix runner also includes `openai/gpt-oss-120b`.
 
-## Adobe AEM / Arco Reproduction Path
+## AEM / Arco Reproduction Path
 
-If you are reproducing the Adobe AEM / Arco benchmark on your own GPU
+If you are reproducing the AEM / Arco benchmark on your own GPU
 infrastructure and traffic/prompt data, start with:
 
 ```text

@@ -21,7 +21,7 @@ The default `precision_matrix.example.csv` enables only the hosted API row.
 
 ## Automated Arco NIM Run Checks
 
-For the Adobe AEM / Arco benchmark, prefer the Docker orchestrator. It pulls one NIM image at a time, resolves the exact runnable NIM profile for the requested precision, starts the server, waits for readiness, benchmarks, writes CSVs, then cleans up before the next profile.
+For the AEM / Arco benchmark, prefer the Docker orchestrator. It pulls one NIM image at a time, resolves the exact runnable NIM profile for the requested precision, starts the server, waits for readiness, benchmarks, writes CSVs, then cleans up before the next profile.
 
 A healthy profile startup looks like this:
 
