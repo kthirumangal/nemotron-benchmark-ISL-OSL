@@ -1,6 +1,8 @@
-# Brev Quickstart
+# GPU Resource Quickstart
 
-Brev may open directly into a notebook environment. You can use either terminal commands or notebook cells.
+Use this on any GPU resource that has Docker, NVIDIA Container Toolkit, access
+to the target GPUs, and network access to NGC/NVCR. You can run it from a
+terminal or from notebook cells if your environment provides a notebook UI.
 
 ## Read This First
 
@@ -393,7 +395,7 @@ python3 -m ensurepip --upgrade
 python3 -m pip install -r requirements-notebook.txt
 ```
 
-If Brev uses `/home/ubuntu/.venv`:
+If your GPU environment uses `/home/ubuntu/.venv`:
 
 ```bash
 /home/ubuntu/.venv/bin/python -m ensurepip --upgrade
@@ -433,7 +435,7 @@ after your model endpoint is live.
 
 ## Run One Endpoint At A Time
 
-If your Brev instance has one GPU, edit `precision_matrix.example.csv` and keep only the row for the endpoint you are currently running set to `enabled=true`. Leave other rows as `enabled=false`. Run the notebook/benchmark, save results, then switch the CSV row for the next model or precision profile.
+If your GPU resource has one GPU, edit `precision_matrix.example.csv` and keep only the row for the endpoint you are currently running set to `enabled=true`. Leave other rows as `enabled=false`. Run the notebook/benchmark, save results, then switch the CSV row for the next model or precision profile.
 
 The default matrix enables only the hosted NVIDIA API row. Local rows are disabled until you start those servers.
 

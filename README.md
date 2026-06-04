@@ -8,7 +8,7 @@ If you are reproducing the Adobe AEM / Arco benchmark on your own GPU
 infrastructure and traffic/prompt data, start with:
 
 ```text
-BREV_QUICKSTART.md
+GPU_QUICKSTART.md
 ```
 
 That path uses the Docker-based Arco NIM orchestrator. It pulls one NIM image at
@@ -127,7 +127,7 @@ curl http://localhost:8004/v1/models
 
 If `curl` returns `Connection refused`, that row is not runnable yet. Keep it `enabled=false`.
 
-On a one-GPU Brev instance, run local models one at a time:
+On a one-GPU resource, run local models one at a time:
 
 1. Start one local model server.
 2. Verify it with `curl http://localhost:<port>/v1/models`.
@@ -159,11 +159,11 @@ export NVIDIA_BASE_URL="https://integrate.api.nvidia.com/v1"
 export NVIDIA_MODEL="nvidia/nemotron-3-nano-30b-a3b"
 ```
 
-## Brev Notebook Workflow
+## GPU Notebook Workflow
 
-Brev often opens directly into a notebook instance. You can run setup either from a terminal or from notebook cells.
+Some GPU environments open directly into a notebook instance. You can run setup either from a terminal or from notebook cells.
 
-Clone the repo on Brev:
+Clone the repo on your GPU resource:
 
 ```bash
 git clone https://github.com/kthirumangal/nemotron-benchmark-ISL-OSL.git
@@ -183,7 +183,7 @@ Install notebook dependencies:
 python3 -m pip install -r requirements-notebook.txt
 ```
 
-If Brev reports `No module named pip`, bootstrap `pip` in the active Python environment:
+If Python reports `No module named pip`, bootstrap `pip` in the active Python environment:
 
 ```bash
 python3 -m ensurepip --upgrade
@@ -200,7 +200,7 @@ python3 -m ensurepip --upgrade
 python3 -m pip install -r requirements-notebook.txt
 ```
 
-If Brev is using `/home/ubuntu/.venv`, call that Python directly:
+If your environment is using `/home/ubuntu/.venv`, call that Python directly:
 
 ```bash
 /home/ubuntu/.venv/bin/python -m ensurepip --upgrade
@@ -235,7 +235,7 @@ The notebook lets you:
 - Load the latest `results/precision-matrix-*/summary.csv`
 - Plot p90 TTFT, p90 total latency, p50 decode throughput, and pass/fail status
 
-If your Brev instance has one GPU, do not try to run every model endpoint at the same time. Keep only the active endpoint row set to `enabled=true` in `precision_matrix.example.csv`, run the matrix, save results, then switch to the next endpoint/profile.
+If your GPU resource has one GPU, do not try to run every model endpoint at the same time. Keep only the active endpoint row set to `enabled=true` in `precision_matrix.example.csv`, run the matrix, save results, then switch to the next endpoint/profile.
 
 After running multiple one-endpoint benchmarks, combine them for side-by-side comparison:
 
