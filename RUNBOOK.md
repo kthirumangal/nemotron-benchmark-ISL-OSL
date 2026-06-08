@@ -99,11 +99,36 @@ arco_nim_models.h200-gptoss-standard-vs-turbo.csv
 
 ```bash
 docker ps
-docker logs -f arco-bench-nim-nano-30b-fp8
-curl http://localhost:8002/v1/health/ready
-curl http://localhost:8002/v1/models
 nvidia-smi
 du -sh "$HOME/nim-cache"/*
+```
+
+```bash
+docker logs -f arco-bench-nim-nano-30b-fp8
+docker logs -f arco-bench-nim-nano-30b-nvfp4
+docker logs -f arco-bench-gpt-oss-120b-mxfp4
+docker logs -f arco-bench-nim-super-120b-fp8
+docker logs -f arco-bench-nim-super-120b-nvfp4
+```
+
+```bash
+docker logs -f arco-bench-nim-nano-30b-bf16-safe
+docker logs -f arco-bench-gpt-oss-120b-mxfp4-safe
+```
+
+```bash
+docker logs -f arco-bench-nim-nano-30b-nvfp4-h100
+docker logs -f arco-bench-gpt-oss-120b-mxfp4-h200
+docker logs -f arco-bench-gpt-oss-120b-turbo-candidate-h200
+```
+
+```bash
+curl http://localhost:8002/v1/health/ready && curl http://localhost:8002/v1/models
+curl http://localhost:8003/v1/health/ready && curl http://localhost:8003/v1/models
+curl http://localhost:8004/v1/health/ready && curl http://localhost:8004/v1/models
+curl http://localhost:8005/v1/health/ready && curl http://localhost:8005/v1/models
+curl http://localhost:8006/v1/health/ready && curl http://localhost:8006/v1/models
+curl http://localhost:8007/v1/health/ready && curl http://localhost:8007/v1/models
 ```
 
 ## Check Output
