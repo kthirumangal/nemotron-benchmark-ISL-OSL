@@ -2,8 +2,8 @@
 """
 Combine benchmark result folders into side-by-side summary/detail CSVs.
 
-Use this when you benchmark one endpoint at a time on a single-GPU Brev
-instance. Each benchmark run creates results/precision-matrix-*/summary.csv.
+Use this when you benchmark one endpoint at a time on a single-GPU instance.
+Each benchmark run creates results/precision-matrix-*/summary.csv.
 This script scans those folders and writes:
 
 - results/combined-summary.csv
