@@ -81,6 +81,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--max-tokens", type=int, default=1024)
+    parser.add_argument(
+        "--max-tokens-sweep",
+        nargs="+",
+        default=[],
+        help=(
+            "Run each ready model multiple times with different max_tokens values. "
+            "Example: --max-tokens-sweep 1024 768 512 384"
+        ),
+    )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--timeout-s", type=int, default=300)
     parser.add_argument("--ttft-target-s", type=float, default=2.0)
@@ -268,6 +277,19 @@ def parse_positive_int(value: str) -> Optional[int]:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def parse_max_tokens_sweep(args: argparse.Namespace) -> list[int]:
+    values: list[int] = []
+    raw_values = args.max_tokens_sweep or [str(args.max_tokens)]
+    for raw in raw_values:
+        for part in str(raw).split(","):
+            parsed = parse_positive_int(part)
+            if not parsed:
+                raise ValueError(f"Invalid max token value: {part}")
+            if parsed not in values:
+                values.append(parsed)
+    return values
 
 
 def default_cache_root() -> pathlib.Path:
@@ -837,6 +859,7 @@ SUMMARY_FIELDNAMES = [
     "gpu_count",
     "gpu_names",
     "gpu_memory_total_mb",
+    "max_tokens",
     "category",
     "prompt_description",
     "prompt_query",
@@ -878,6 +901,7 @@ def summarize_combined_csv(raw_csv: pathlib.Path, summary_csv: pathlib.Path) -> 
         "gpu_count",
         "gpu_names",
         "gpu_memory_total_mb",
+        "max_tokens",
         "category",
         "prompt_description",
         "prompt_query",
@@ -950,6 +974,7 @@ ROLLUP_FIELDNAMES = [
     "gpu_count",
     "gpu_names",
     "gpu_memory_total_mb",
+    "max_tokens",
     "category",
     "completed_runs",
     "error_runs",
@@ -994,6 +1019,7 @@ def summarize_rollup_csv(
         "gpu_count",
         "gpu_names",
         "gpu_memory_total_mb",
+        "max_tokens",
     ]
     if include_category:
         group_fields.append("category")
@@ -1087,6 +1113,7 @@ def run_benchmark(
     gpu_metadata: dict[str, str],
     experiment_id: str,
     output_path: pathlib.Path,
+    max_tokens: int,
 ) -> int:
     cmd = [
         sys.executable,
@@ -1121,7 +1148,7 @@ def run_benchmark(
         "--concurrency",
         str(args.concurrency),
         "--max-tokens",
-        str(args.max_tokens),
+        str(max_tokens),
         "--temperature",
         str(args.temperature),
         "--timeout-s",
@@ -1180,12 +1207,18 @@ def main() -> int:
 
     profiles = load_profiles(matrix_path, args.start_port)
     gpu_count = detect_gpu_count(args.gpu_count)
+    try:
+        max_tokens_values = parse_max_tokens_sweep(args)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     cache_root = pathlib.Path(args.cache_root).expanduser() if args.cache_root else default_cache_root()
     experiment_id = args.experiment_id or time.strftime("arco-nim-%Y%m%d-%H%M%S")
 
     print(f"Experiment: {experiment_id}")
     print(f"Profiles:   {sum(1 for profile in profiles if profile.enabled)} enabled")
     print(f"GPU count:  {gpu_count}")
+    print(f"Max tokens: {', '.join(str(value) for value in max_tokens_values)}")
     print(f"Cache root: {cache_root}")
     print(f"Output:     {output_path}")
     print(f"By prompt:  {summary_output_path}")
@@ -1340,28 +1373,34 @@ def main() -> int:
             gpu_metadata = current_gpu_metadata()
             print(f"GPU:          {gpu_metadata.get('gpu_count', '')} x {gpu_metadata.get('gpu_names', '')}")
 
-            rc = run_benchmark(
-                args=args,
-                profile=profile,
-                model_id=model_id,
-                precision_label=precision_label,
-                requested_precision_label=requested_precision,
-                detected_precision_label=detected_precision,
-                gpu_metadata=gpu_metadata,
-                experiment_id=experiment_id,
-                output_path=output_path,
-            )
-            if rc != 0:
-                failures += 1
-                print(f"Benchmark failed for {profile.label} with exit code {rc}.")
-                if not args.continue_on_error:
-                    return rc
-            write_all_summaries(
-                output_path,
-                summary_output_path,
-                category_summary_output_path,
-                model_summary_output_path,
-            )
+            for max_tokens in max_tokens_values:
+                print(f"Benchmark max_tokens={max_tokens}")
+                rc = run_benchmark(
+                    args=args,
+                    profile=profile,
+                    model_id=model_id,
+                    precision_label=precision_label,
+                    requested_precision_label=requested_precision,
+                    detected_precision_label=detected_precision,
+                    gpu_metadata=gpu_metadata,
+                    experiment_id=experiment_id,
+                    output_path=output_path,
+                    max_tokens=max_tokens,
+                )
+                if rc != 0:
+                    failures += 1
+                    print(
+                        f"Benchmark failed for {profile.label} "
+                        f"max_tokens={max_tokens} with exit code {rc}."
+                    )
+                    if not args.continue_on_error:
+                        return rc
+                write_all_summaries(
+                    output_path,
+                    summary_output_path,
+                    category_summary_output_path,
+                    model_summary_output_path,
+                )
         except Exception as exc:
             failures += 1
             print(f"Profile failed: {profile.label}: {exc}", file=sys.stderr)
