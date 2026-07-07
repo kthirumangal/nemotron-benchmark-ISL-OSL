@@ -1,0 +1,2 @@
+enabled,label,image,precision_label,served_model_id,port,tensor_parallel_size,passthrough_args,cache_dir,extra_env_json,benchmark_extra_args
+true,MiMo V2 Flash Experimental,nvcr.io/nim/xiaomi/mimo-v2-flash-experimental:1.7.0-variant,auto,auto,8008,auto,--max-model-len 32768 --max-num-seqs 16 --gpu-memory-utilization 0.95,,,""

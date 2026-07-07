@@ -92,7 +92,41 @@ Compare `max_tokens`, `p50_total_latency_s`, `median_output_tokens`, and
 results/arco-h100-nano-fp8-recommender-token-sweep-by-category.csv
 ```
 
-## 6. Watch
+## 6. MiMo V2 Flash
+
+Use this to benchmark the experimental MiMo V2 Flash NIM container.
+
+```bash
+docker run --rm \
+  --name arco-nim-orchestrator-run \
+  --network host \
+  --gpus all \
+  -e PYTHONUNBUFFERED=1 \
+  -e NGC_API_KEY="$NGC_API_KEY" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/nim-cache:$HOME/nim-cache" \
+  -v "$HOME/aem-growth-arco-benchmark:/arco:ro" \
+  -v "$PWD/results:/results" \
+  arco-nim-orchestrator \
+  --arco-repo /arco \
+  --matrix /bench/arco_nim_models.mimo-v2-flash-experimental.csv \
+  --output /results/arco-mimo-v2-flash-all.csv \
+  --summary-output /results/arco-mimo-v2-flash-by-prompt.csv \
+  --category-summary-output /results/arco-mimo-v2-flash-by-category.csv \
+  --model-summary-output /results/arco-mimo-v2-flash-by-model.csv \
+  --cache-root "$HOME/nim-cache" \
+  --runs 3 \
+  --concurrency 1 \
+  --continue-on-error
+```
+
+For a faster first pass, add only the recommender category:
+
+```bash
+--configs recommender.yaml
+```
+
+## 7. Watch
 
 ```bash
 docker ps
@@ -107,7 +141,7 @@ For a running model container:
 docker logs -f <container_name>
 ```
 
-## 7. Results
+## 8. Results
 
 ```bash
 ls -lh results
@@ -117,20 +151,21 @@ head -5 results/arco-category-summary.csv
 head -5 results/arco-model-summary.csv
 ```
 
-## 8. Use A Different Matrix
+## 9. Use A Different Matrix
 
 Change only the `--matrix` file and output names in the run command.
 
 ```text
 /bench/arco_nim_models.example.csv
 /bench/arco_nim_models.h100-nano-fp8.csv
+/bench/arco_nim_models.mimo-v2-flash-experimental.csv
 /bench/arco_nim_models.a10g-clean-safe.csv
 /bench/arco_nim_models.a10g-gptoss-mxfp4-nano-fp8.csv
 /bench/arco_nim_models.h100-nano-nvfp4.csv
 /bench/arco_nim_models.h200-gptoss-standard-vs-turbo.csv
 ```
 
-## 9. Use Your Own Prompts
+## 10. Use Your Own Prompts
 
 Replace this mount:
 
@@ -150,7 +185,7 @@ If your config file names differ, add:
 --configs classification.yaml reasoning.yaml recommender.yaml
 ```
 
-## 10. Cleanup
+## 11. Cleanup
 
 ```bash
 docker rm -f arco-nim-orchestrator-run 2>/dev/null || true
