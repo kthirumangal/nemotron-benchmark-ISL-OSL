@@ -1,0 +1,5 @@
+enabled,label,configs,max_tokens,system_suffix_file,benchmark_extra_args
+true,baseline-1024,recommender.yaml,1024,,
+true,token-cap-sweep,recommender.yaml,"768 512 384",,
+true,compact-1024,recommender.yaml,1024,/bench/optimization_prompts/compact_recommender.txt,
+true,compact-token-sweep,recommender.yaml,"896 768 640",/bench/optimization_prompts/compact_recommender.txt,

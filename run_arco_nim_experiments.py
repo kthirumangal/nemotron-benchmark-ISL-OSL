@@ -55,6 +55,16 @@ class NimModelProfile:
     required_gb_per_gpu: str
 
 
+@dataclass(frozen=True)
+class OptimizationStep:
+    enabled: bool
+    label: str
+    configs: list[str]
+    max_tokens_values: list[int]
+    system_suffix_file: str
+    benchmark_extra_args: str
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Pull/run NIM containers one at a time and benchmark Arco prompts."
@@ -91,6 +101,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument(
+        "--optimization-plan",
+        default="",
+        help=(
+            "CSV plan for sequential benchmark variants. Columns: "
+            "enabled,label,configs,max_tokens,system_suffix_file,benchmark_extra_args"
+        ),
+    )
     parser.add_argument("--timeout-s", type=int, default=300)
     parser.add_argument("--ttft-target-s", type=float, default=2.0)
     parser.add_argument("--total-latency-target-s", type=float, default=5.0)
@@ -280,16 +298,73 @@ def parse_positive_int(value: str) -> Optional[int]:
 
 
 def parse_max_tokens_sweep(args: argparse.Namespace) -> list[int]:
+    return parse_max_tokens_values(args.max_tokens_sweep or [str(args.max_tokens)])
+
+
+def parse_max_tokens_values(raw_values: list[str]) -> list[int]:
     values: list[int] = []
-    raw_values = args.max_tokens_sweep or [str(args.max_tokens)]
     for raw in raw_values:
-        for part in str(raw).split(","):
+        for part in re.split(r"[\s,]+", str(raw).strip()):
+            if not part:
+                continue
             parsed = parse_positive_int(part)
             if not parsed:
                 raise ValueError(f"Invalid max token value: {part}")
             if parsed not in values:
                 values.append(parsed)
     return values
+
+
+def parse_configs_value(value: str, default_configs: list[str]) -> list[str]:
+    cleaned = value.strip()
+    if not cleaned:
+        return list(default_configs)
+    return [part for part in re.split(r"[\s,]+", cleaned) if part]
+
+
+def resolve_plan_path(plan_path: str, repo_dir: pathlib.Path) -> pathlib.Path:
+    path = pathlib.Path(plan_path).expanduser()
+    return path if path.is_absolute() else repo_dir / path
+
+
+def load_optimization_steps(
+    *,
+    args: argparse.Namespace,
+    repo_dir: pathlib.Path,
+    default_max_tokens_values: list[int],
+) -> list[OptimizationStep]:
+    if not args.optimization_plan:
+        return [
+            OptimizationStep(
+                enabled=True,
+                label="default",
+                configs=list(args.configs),
+                max_tokens_values=default_max_tokens_values,
+                system_suffix_file="",
+                benchmark_extra_args="",
+            )
+        ]
+
+    plan_path = resolve_plan_path(args.optimization_plan, repo_dir)
+    steps: list[OptimizationStep] = []
+    with plan_path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            label = (row.get("label") or "").strip()
+            if not label or label.startswith("#"):
+                continue
+            steps.append(
+                OptimizationStep(
+                    enabled=truthy(row.get("enabled", "true")),
+                    label=label,
+                    configs=parse_configs_value(row.get("configs", ""), list(args.configs)),
+                    max_tokens_values=parse_max_tokens_values(
+                        [row.get("max_tokens", "") or str(args.max_tokens)]
+                    ),
+                    system_suffix_file=(row.get("system_suffix_file") or "").strip(),
+                    benchmark_extra_args=(row.get("benchmark_extra_args") or "").strip(),
+                )
+            )
+    return steps
 
 
 def default_cache_root() -> pathlib.Path:
@@ -851,6 +926,7 @@ def write_profile_skip_row(
 
 SUMMARY_FIELDNAMES = [
     "experiment_id",
+    "optimization_label",
     "deployment_label",
     "model",
     "precision_label",
@@ -893,6 +969,7 @@ def summarize_combined_csv(raw_csv: pathlib.Path, summary_csv: pathlib.Path) -> 
     groups: dict[tuple[str, ...], list[dict[str, str]]] = {}
     group_fields = [
         "experiment_id",
+        "optimization_label",
         "deployment_label",
         "model",
         "precision_label",
@@ -966,6 +1043,7 @@ def summarize_combined_csv(raw_csv: pathlib.Path, summary_csv: pathlib.Path) -> 
 
 ROLLUP_FIELDNAMES = [
     "experiment_id",
+    "optimization_label",
     "deployment_label",
     "model",
     "precision_label",
@@ -1011,6 +1089,7 @@ def summarize_rollup_csv(
 
     group_fields = [
         "experiment_id",
+        "optimization_label",
         "deployment_label",
         "model",
         "precision_label",
@@ -1113,6 +1192,7 @@ def run_benchmark(
     gpu_metadata: dict[str, str],
     experiment_id: str,
     output_path: pathlib.Path,
+    step: OptimizationStep,
     max_tokens: int,
 ) -> int:
     cmd = [
@@ -1140,6 +1220,8 @@ def run_benchmark(
         gpu_metadata.get("gpu_memory_total_mb", ""),
         "--experiment-id",
         experiment_id,
+        "--optimization-label",
+        step.label,
         "--api-key-env",
         args.benchmark_api_key_env,
         "--allow-missing-api-key",
@@ -1163,8 +1245,12 @@ def run_benchmark(
         str(output_path),
         "--append",
         "--configs",
-        *args.configs,
+        *step.configs,
     ]
+    if step.system_suffix_file:
+        cmd.extend(["--system-suffix-file", step.system_suffix_file])
+    if step.benchmark_extra_args:
+        cmd.extend(shlex.split(step.benchmark_extra_args))
     if profile.benchmark_extra_args:
         cmd.extend(shlex.split(profile.benchmark_extra_args))
     proc = subprocess.run(cmd)
@@ -1209,7 +1295,12 @@ def main() -> int:
     gpu_count = detect_gpu_count(args.gpu_count)
     try:
         max_tokens_values = parse_max_tokens_sweep(args)
-    except ValueError as exc:
+        optimization_steps = load_optimization_steps(
+            args=args,
+            repo_dir=repo_dir,
+            default_max_tokens_values=max_tokens_values,
+        )
+    except (OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     cache_root = pathlib.Path(args.cache_root).expanduser() if args.cache_root else default_cache_root()
@@ -1218,7 +1309,13 @@ def main() -> int:
     print(f"Experiment: {experiment_id}")
     print(f"Profiles:   {sum(1 for profile in profiles if profile.enabled)} enabled")
     print(f"GPU count:  {gpu_count}")
-    print(f"Max tokens: {', '.join(str(value) for value in max_tokens_values)}")
+    enabled_steps = [step for step in optimization_steps if step.enabled]
+    print(f"Plan steps: {len(enabled_steps)}")
+    for step in enabled_steps:
+        print(
+            f"- {step.label}: configs={','.join(step.configs)} "
+            f"max_tokens={','.join(str(value) for value in step.max_tokens_values)}"
+        )
     print(f"Cache root: {cache_root}")
     print(f"Output:     {output_path}")
     print(f"By prompt:  {summary_output_path}")
@@ -1373,34 +1470,37 @@ def main() -> int:
             gpu_metadata = current_gpu_metadata()
             print(f"GPU:          {gpu_metadata.get('gpu_count', '')} x {gpu_metadata.get('gpu_names', '')}")
 
-            for max_tokens in max_tokens_values:
-                print(f"Benchmark max_tokens={max_tokens}")
-                rc = run_benchmark(
-                    args=args,
-                    profile=profile,
-                    model_id=model_id,
-                    precision_label=precision_label,
-                    requested_precision_label=requested_precision,
-                    detected_precision_label=detected_precision,
-                    gpu_metadata=gpu_metadata,
-                    experiment_id=experiment_id,
-                    output_path=output_path,
-                    max_tokens=max_tokens,
-                )
-                if rc != 0:
-                    failures += 1
-                    print(
-                        f"Benchmark failed for {profile.label} "
-                        f"max_tokens={max_tokens} with exit code {rc}."
+            for step in enabled_steps:
+                print(f"Optimization step: {step.label}")
+                for max_tokens in step.max_tokens_values:
+                    print(f"Benchmark {step.label} max_tokens={max_tokens}")
+                    rc = run_benchmark(
+                        args=args,
+                        profile=profile,
+                        model_id=model_id,
+                        precision_label=precision_label,
+                        requested_precision_label=requested_precision,
+                        detected_precision_label=detected_precision,
+                        gpu_metadata=gpu_metadata,
+                        experiment_id=experiment_id,
+                        output_path=output_path,
+                        step=step,
+                        max_tokens=max_tokens,
                     )
-                    if not args.continue_on_error:
-                        return rc
-                write_all_summaries(
-                    output_path,
-                    summary_output_path,
-                    category_summary_output_path,
-                    model_summary_output_path,
-                )
+                    if rc != 0:
+                        failures += 1
+                        print(
+                            f"Benchmark failed for {profile.label} "
+                            f"{step.label} max_tokens={max_tokens} with exit code {rc}."
+                        )
+                        if not args.continue_on_error:
+                            return rc
+                    write_all_summaries(
+                        output_path,
+                        summary_output_path,
+                        category_summary_output_path,
+                        model_summary_output_path,
+                    )
         except Exception as exc:
             failures += 1
             print(f"Profile failed: {profile.label}: {exc}", file=sys.stderr)

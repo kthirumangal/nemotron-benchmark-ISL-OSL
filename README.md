@@ -92,7 +92,49 @@ Compare `max_tokens`, `p50_total_latency_s`, `median_output_tokens`, and
 results/arco-h100-nano-fp8-recommender-token-sweep-by-category.csv
 ```
 
-## 6. MiMo V2 Flash
+## 6. Recommender Optimization Plan
+
+Use this to run baseline, token caps, compact output, and compact output with
+lower token caps in sequence.
+
+```bash
+docker run --rm \
+  --name arco-nim-orchestrator-run \
+  --network host \
+  --gpus all \
+  -e PYTHONUNBUFFERED=1 \
+  -e NGC_API_KEY="$NGC_API_KEY" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$HOME/nim-cache:$HOME/nim-cache" \
+  -v "$HOME/aem-growth-arco-benchmark:/arco:ro" \
+  -v "$PWD/results:/results" \
+  arco-nim-orchestrator \
+  --arco-repo /arco \
+  --matrix /bench/arco_nim_models.h100-nano-fp8.csv \
+  --optimization-plan /bench/arco_optimization_plan.recommender.csv \
+  --output /results/arco-h100-nano-fp8-recommender-optimization-all.csv \
+  --summary-output /results/arco-h100-nano-fp8-recommender-optimization-by-prompt.csv \
+  --category-summary-output /results/arco-h100-nano-fp8-recommender-optimization-by-category.csv \
+  --model-summary-output /results/arco-h100-nano-fp8-recommender-optimization-by-model.csv \
+  --cache-root "$HOME/nim-cache" \
+  --runs 3 \
+  --concurrency 1 \
+  --continue-on-error
+```
+
+Pick the fastest variant that keeps accuracy high:
+
+```bash
+docker run --rm \
+  -v "$PWD/results:/results" \
+  --entrypoint python3 \
+  arco-nim-orchestrator \
+  /bench/analyze_optimization_results.py \
+  --summary /results/arco-h100-nano-fp8-recommender-optimization-by-category.csv \
+  --min-accuracy-pass-rate 0.95
+```
+
+## 7. MiMo V2 Flash
 
 Use this to benchmark the experimental MiMo V2 Flash NIM container.
 
@@ -126,7 +168,7 @@ For a faster first pass, add only the recommender category:
 --configs recommender.yaml
 ```
 
-## 7. Watch
+## 8. Watch
 
 ```bash
 docker ps
@@ -141,7 +183,7 @@ For a running model container:
 docker logs -f <container_name>
 ```
 
-## 8. Results
+## 9. Results
 
 ```bash
 ls -lh results
@@ -151,7 +193,7 @@ head -5 results/arco-category-summary.csv
 head -5 results/arco-model-summary.csv
 ```
 
-## 9. Use A Different Matrix
+## 10. Use A Different Matrix
 
 Change only the `--matrix` file and output names in the run command.
 
@@ -165,7 +207,7 @@ Change only the `--matrix` file and output names in the run command.
 /bench/arco_nim_models.h200-gptoss-standard-vs-turbo.csv
 ```
 
-## 10. Use Your Own Prompts
+## 11. Use Your Own Prompts
 
 Replace this mount:
 
@@ -185,7 +227,7 @@ If your config file names differ, add:
 --configs classification.yaml reasoning.yaml recommender.yaml
 ```
 
-## 11. Cleanup
+## 12. Cleanup
 
 ```bash
 docker rm -f arco-nim-orchestrator-run 2>/dev/null || true

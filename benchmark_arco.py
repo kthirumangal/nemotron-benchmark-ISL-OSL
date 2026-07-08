@@ -81,6 +81,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gpu-count", default="", help="Override detected GPU count")
     parser.add_argument("--gpu-memory-total-mb", default="", help="Override detected GPU memory total in MB")
     parser.add_argument("--experiment-id", default="", help="Stable run grouping ID")
+    parser.add_argument("--optimization-label", default="", help="Label for prompt/perf variant")
     parser.add_argument("--api-key-env", default="NVIDIA_API_KEY")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--allow-missing-api-key", action="store_true")
@@ -97,6 +98,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-reasoning-effort", default="")
     parser.add_argument("--force-visible-output", action="store_true")
     parser.add_argument("--capture-reasoning-as-output", action="store_true")
+    parser.add_argument("--system-suffix", default="", help="Extra instruction appended to the system prompt")
+    parser.add_argument("--system-suffix-file", default="", help="File containing extra instruction appended to the system prompt")
     parser.add_argument("--extra-body-json", default="")
     parser.add_argument("--measurement-mode", choices=("strict", "lenient"), default="strict")
     parser.add_argument("--stream-debug-dir", default="")
@@ -252,6 +255,18 @@ def apply_force_visible_output(messages: list[dict[str, str]]) -> list[dict[str,
             message["content"] = instruction + "\n\n" + message["content"]
             return updated
     return [{"role": "system", "content": instruction}, *updated]
+
+
+def apply_system_suffix(messages: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
+    if not suffix.strip():
+        return messages
+    instruction = "\n\n## Additional Benchmark Instruction\n" + suffix.strip()
+    updated = [dict(message) for message in messages]
+    for message in updated:
+        if message["role"] == "system":
+            message["content"] = message["content"].rstrip() + instruction
+            return updated
+    return [{"role": "system", "content": suffix.strip()}, *updated]
 
 
 def text_from_value(value: Any) -> str:
@@ -444,6 +459,8 @@ def call_endpoint(
     gpu_metadata: dict[str, str],
 ) -> dict[str, Any]:
     messages = [dict(message) for message in case.messages]
+    if args.system_suffix:
+        messages = apply_system_suffix(messages, args.system_suffix)
     if args.force_visible_output:
         messages = apply_force_visible_output(messages)
 
@@ -487,6 +504,7 @@ def call_endpoint(
 
     base_row = {
         "experiment_id": experiment_id,
+        "optimization_label": args.optimization_label,
         "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "host": socket.gethostname(),
         "deployment_label": args.deployment_label,
@@ -707,6 +725,7 @@ def slugify(value: str) -> str:
 
 FIELDNAMES = [
     "experiment_id",
+    "optimization_label",
     "timestamp_utc",
     "host",
     "deployment_label",
@@ -821,6 +840,18 @@ def main() -> int:
         if not isinstance(parsed_extra, dict):
             print("--extra-body-json must decode to an object.", file=sys.stderr)
             return 2
+
+    if args.system_suffix_file:
+        suffix_path = pathlib.Path(args.system_suffix_file).expanduser()
+        if not suffix_path.exists():
+            print(f"--system-suffix-file not found: {suffix_path}", file=sys.stderr)
+            return 2
+        file_suffix = suffix_path.read_text(encoding="utf-8")
+        args.system_suffix = (
+            args.system_suffix.rstrip() + "\n\n" + file_suffix.strip()
+            if args.system_suffix.strip()
+            else file_suffix.strip()
+        )
 
     experiment_id = args.experiment_id or time.strftime("arco-%Y%m%d-%H%M%S")
     gpu_metadata = detect_gpu_metadata(

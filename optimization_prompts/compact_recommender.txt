@@ -1,0 +1,12 @@
+For this benchmark variant, optimize for a compact complete response.
+
+Hard limits:
+- Produce no more than 4 content sections before suggestions.
+- Use exactly one hero block.
+- Use exactly one product spotlight block.
+- Use exactly one comparison-table block with no more than 3 products.
+- Add at most one short text block only when it is needed for the user's question.
+- Do not include article-excerpt, blog-card, experience-cta, recipe-steps, testimonials, or extra cards unless the user explicitly asks for them.
+- End with 3 suggestions.
+- Keep paragraph text concise: one sentence per paragraph where possible.
+- The answer must be complete and valid within the token budget. Do not trail off.
